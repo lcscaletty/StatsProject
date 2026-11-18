@@ -56,11 +56,13 @@ The script computes each participant's mean stake as a proportion of balance dur
 
 The participant site is a static site for GitHub Pages. Central collection requires the separate API service; GitHub Pages by itself cannot receive or store responses.
 
-1. Put these files in a GitHub repository and deploy the `docs` folder with GitHub Pages.
-2. Deploy `server.py`, `requirements.txt`, and `render.yaml` as a Render web service. The blueprint provisions persistent storage for SQLite and generates an admin token. Keep that token private; retrieve it from the service environment settings.
-3. Set the API service's `ALLOWED_ORIGINS` to the exact GitHub Pages origin, such as `https://your-account.github.io` (no path).
-4. Set `apiBaseUrl` in `docs/config.js` to the HTTPS URL of the deployed API, then redeploy the Pages site.
+1. In GitHub, set Pages to deploy branch `main` from the `/docs` folder.
+2. Create a PostgreSQL database with Neon, then copy its connection string. Keep it private.
+3. In Render, create a Blueprint from the repository. The included `render.yaml` configures a free web service; provide the Neon connection string as `DATABASE_URL` and set `ALLOWED_ORIGINS` to the exact GitHub Pages origin, such as `https://your-account.github.io` (no path). Render generates an admin token; keep it private and retrieve it from the service environment settings.
+4. Set `apiBaseUrl` in `docs/config.js` to the HTTPS URL of the deployed API, then commit and push that change so Pages redeploys.
 5. Confirm that the public site reports “Study server connected” before distributing its link.
+
+The API uses SQLite locally and PostgreSQL when `DATABASE_URL` is set. Free hosting plans can sleep or have usage and retention limits; verify current provider limits and your study's data-retention requirements before collecting participant responses.
 
 The browser sends one participant record when all rounds are complete. A random participant ID is generated in the browser; the app does not ask for names or contact details. Hosting providers may still keep technical request logs. The participant can download their own CSV, while the study owner can export the complete dataset using the private admin token. A failed submission stays in the current browser tab until it is retried or downloaded.
 

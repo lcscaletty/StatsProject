@@ -7,15 +7,18 @@ import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Iterator, Literal
+from typing import Any, Generator, Literal
 from uuid import UUID
 
+import psycopg
 from fastapi import FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
+from psycopg.rows import dict_row
 
 DATABASE_PATH = Path(os.environ.get("DATABASE_PATH", "study.sqlite3"))
+DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
 ADMIN_TOKEN = os.environ.get("ADMIN_TOKEN", "")
 configured_origins = os.environ.get("ALLOWED_ORIGINS", "")
 ALLOWED_ORIGINS = [
@@ -67,34 +70,59 @@ CSV_COLUMNS = [
     "forced",
 ]
 
-SCHEMA = """
-CREATE TABLE IF NOT EXISTS submissions (
-    participant_id TEXT PRIMARY KEY,
-    condition TEXT NOT NULL CHECK (condition IN ('winning', 'losing')),
-    submitted_at TEXT NOT NULL
-);
-CREATE TABLE IF NOT EXISTS rounds (
-    participant_id TEXT NOT NULL REFERENCES submissions(participant_id),
-    round_number INTEGER NOT NULL,
-    phase TEXT NOT NULL CHECK (phase IN ('baseline', 'streak', 'post')),
-    team_a TEXT NOT NULL,
-    team_b TEXT NOT NULL,
-    odds_a REAL NOT NULL,
-    odds_b REAL NOT NULL,
-    probability_a REAL NOT NULL,
-    selection TEXT NOT NULL CHECK (selection IN ('A', 'B')),
-    selected_odds REAL NOT NULL,
-    stake REAL NOT NULL,
-    stake_share REAL NOT NULL,
-    winner TEXT NOT NULL CHECK (winner IN ('A', 'B')),
-    bet_result TEXT NOT NULL CHECK (bet_result IN ('win', 'loss')),
-    profit REAL NOT NULL,
-    balance_before REAL NOT NULL,
-    balance_after REAL NOT NULL,
-    forced INTEGER NOT NULL CHECK (forced IN (0, 1)),
-    PRIMARY KEY (participant_id, round_number)
-);
-"""
+ROUND_COLUMNS = (
+    "participant_id",
+    "round_number",
+    "phase",
+    "team_a",
+    "team_b",
+    "odds_a",
+    "odds_b",
+    "probability_a",
+    "selection",
+    "selected_odds",
+    "stake",
+    "stake_share",
+    "winner",
+    "bet_result",
+    "profit",
+    "balance_before",
+    "balance_after",
+    "forced",
+)
+ROUND_RECORD_COLUMNS = ROUND_COLUMNS[1:-1]
+SCHEMA = (
+    """
+    CREATE TABLE IF NOT EXISTS submissions (
+        participant_id TEXT PRIMARY KEY,
+        condition TEXT NOT NULL CHECK (condition IN ('winning', 'losing')),
+        submitted_at TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS rounds (
+        participant_id TEXT NOT NULL REFERENCES submissions(participant_id),
+        round_number INTEGER NOT NULL,
+        phase TEXT NOT NULL CHECK (phase IN ('baseline', 'streak', 'post')),
+        team_a TEXT NOT NULL,
+        team_b TEXT NOT NULL,
+        odds_a DOUBLE PRECISION NOT NULL,
+        odds_b DOUBLE PRECISION NOT NULL,
+        probability_a DOUBLE PRECISION NOT NULL,
+        selection TEXT NOT NULL CHECK (selection IN ('A', 'B')),
+        selected_odds DOUBLE PRECISION NOT NULL,
+        stake DOUBLE PRECISION NOT NULL,
+        stake_share DOUBLE PRECISION NOT NULL,
+        winner TEXT NOT NULL CHECK (winner IN ('A', 'B')),
+        bet_result TEXT NOT NULL CHECK (bet_result IN ('win', 'loss')),
+        profit DOUBLE PRECISION NOT NULL,
+        balance_before DOUBLE PRECISION NOT NULL,
+        balance_after DOUBLE PRECISION NOT NULL,
+        forced INTEGER NOT NULL CHECK (forced IN (0, 1)),
+        PRIMARY KEY (participant_id, round_number)
+    )
+    """,
+)
 
 app = FastAPI(title="Sports Betting Decisions Study API", docs_url=None, redoc_url=None)
 app.add_middleware(
@@ -136,13 +164,23 @@ class Submission(BaseModel):
 
 
 @contextmanager
-def database() -> Iterator[sqlite3.Connection]:
-    DATABASE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    connection = sqlite3.connect(DATABASE_PATH, timeout=10)
-    connection.row_factory = sqlite3.Row
+def database() -> Generator[sqlite3.Connection | psycopg.Connection[dict[str, Any]], None, None]:
+    if DATABASE_URL:
+        connection: sqlite3.Connection | psycopg.Connection[dict[str, Any]] = psycopg.connect(
+            DATABASE_URL,
+            row_factory=dict_row,
+        )
+    else:
+        DATABASE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        sqlite_connection = sqlite3.connect(DATABASE_PATH, timeout=10)
+        sqlite_connection.row_factory = sqlite3.Row
+        connection = sqlite_connection
     try:
-        connection.execute("PRAGMA foreign_keys = ON")
-        connection.executescript(SCHEMA)
+        if not DATABASE_URL:
+            connection.execute("PRAGMA foreign_keys = ON")
+        for statement in SCHEMA:
+            connection.execute(statement)
+        connection.commit()
         yield connection
         connection.commit()
     except Exception:
@@ -207,40 +245,35 @@ def save_submission(submission: Submission) -> bool:
     validate_submission(submission)
     participant_id = str(submission.participant_id)
     submitted_at = datetime.now(timezone.utc).isoformat()
+    placeholder = "%s" if DATABASE_URL else "?"
 
     with database() as connection:
-        connection.execute("BEGIN IMMEDIATE")
-        existing = connection.execute(
-            "SELECT 1 FROM submissions WHERE participant_id = ?",
-            (participant_id,),
-        ).fetchone()
-        if existing:
-            return False
-
-        connection.execute(
-            "INSERT INTO submissions (participant_id, condition, submitted_at) VALUES (?, ?, ?)",
+        connection.execute("BEGIN" if DATABASE_URL else "BEGIN IMMEDIATE")
+        inserted = connection.execute(
+            f"""
+            INSERT INTO submissions (participant_id, condition, submitted_at)
+            VALUES ({placeholder}, {placeholder}, {placeholder})
+            ON CONFLICT (participant_id) DO NOTHING
+            """,
             (participant_id, submission.condition, submitted_at),
         )
-        connection.executemany(
-            """
-            INSERT INTO rounds (
-                participant_id, round_number, phase, team_a, team_b, odds_a, odds_b,
-                probability_a, selection, selected_odds, stake, stake_share, winner,
-                bet_result, profit, balance_before, balance_after, forced
-            ) VALUES (
-                :participant_id, :round_number, :phase, :team_a, :team_b, :odds_a, :odds_b,
-                :probability_a, :selection, :selected_odds, :stake, :stake_share, :winner,
-                :bet_result, :profit, :balance_before, :balance_after, :forced
+        if inserted.rowcount == 0:
+            return False
+
+        round_placeholders = ", ".join([placeholder] * len(ROUND_COLUMNS))
+        round_values = []
+        for record in submission.rounds:
+            values = record.model_dump()
+            round_values.append(
+                (
+                    participant_id,
+                    *(values[column] for column in ROUND_RECORD_COLUMNS),
+                    int(values["forced"]),
+                )
             )
-            """,
-            [
-                {
-                    **record.model_dump(),
-                    "participant_id": participant_id,
-                    "forced": int(record.forced),
-                }
-                for record in submission.rounds
-            ],
+        connection.executemany(
+            f"INSERT INTO rounds ({', '.join(ROUND_COLUMNS)}) VALUES ({round_placeholders})",
+            round_values,
         )
     return True
 

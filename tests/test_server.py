@@ -2,7 +2,8 @@ import math
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import server
@@ -108,6 +109,31 @@ class StudyApiTests(unittest.TestCase):
 
         with self.assertRaisesRegex(ValueError, "probability must match"):
             server.validate_submission(submission)
+
+    def test_postgres_backend_uses_postgres_parameters(self) -> None:
+        connection = MagicMock()
+        connection.execute.return_value = SimpleNamespace(rowcount=1)
+        connect = MagicMock(return_value=connection)
+        submission = build_submission()
+
+        with (
+            patch.object(server, "DATABASE_URL", "postgresql://example/db"),
+            patch.object(server.psycopg, "connect", connect),
+        ):
+            self.assertTrue(server.save_submission(submission))
+
+        connect.assert_called_once_with(
+            "postgresql://example/db",
+            row_factory=server.dict_row,
+        )
+        submission_insert = next(
+            call for call in connection.execute.call_args_list
+            if call.args[0].lstrip().startswith("INSERT INTO submissions")
+        )
+        self.assertIn("%s", submission_insert.args[0])
+        rounds_insert = connection.executemany.call_args
+        self.assertIn("%s", rounds_insert.args[0])
+        self.assertEqual(len(rounds_insert.args[1]), 12)
 
 
 if __name__ == "__main__":
