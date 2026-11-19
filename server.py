@@ -33,7 +33,7 @@ ALLOWED_ORIGINS = [
     "http://127.0.0.1:8000",
 ]
 
-PHASES = ["baseline"] * 4 + ["streak"] * 3 + ["post"] * 5
+PHASES = ["baseline"] * 4 + ["streak"] * 4 + ["post"] * 4
 TEAM_NAMES = {
     "Cedar City Foxes",
     "Northbank Owls",

@@ -6,7 +6,7 @@ from pathlib import Path
 
 from scipy.stats import ttest_ind
 
-PHASES = {"baseline": 4, "post": 5}
+PHASES = {"baseline": 4, "post": 4}
 CONDITIONS = ("winning", "losing")
 REQUIRED_COLUMNS = {"participant_id", "condition", "phase", "stake_share"}
 
@@ -55,7 +55,7 @@ def load_participant_summaries(paths: list[Path]) -> list[dict[str, str | float]
     for participant_id, participant in participants.items():
         if len(participant["baseline"]) != PHASES["baseline"] or len(participant["post"]) != PHASES["post"]:
             raise ValueError(
-                f"Participant {participant_id} must have 4 baseline and 5 follow-up rounds."
+                f"Participant {participant_id} must have 4 baseline and 4 follow-up rounds."
             )
         baseline_mean = statistics.mean(participant["baseline"])
         follow_up_mean = statistics.mean(participant["post"])

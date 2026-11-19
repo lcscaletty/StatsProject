@@ -32,7 +32,7 @@ class AnalysisTests(unittest.TestCase):
                                 "stake_share": baseline_share,
                             }
                         )
-                    for _ in range(3):
+                    for _ in range(4):
                         writer.writerow(
                             {
                                 "participant_id": participant_id,
@@ -41,7 +41,7 @@ class AnalysisTests(unittest.TestCase):
                                 "stake_share": 0.03,
                             }
                         )
-                    for _ in range(5):
+                    for _ in range(4):
                         writer.writerow(
                             {
                                 "participant_id": participant_id,

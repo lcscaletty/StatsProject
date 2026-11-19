@@ -273,7 +273,7 @@ function phaseForRound(roundNumber) {
   if (roundNumber <= 4) {
     return "baseline";
   }
-  if (roundNumber <= 7) {
+  if (roundNumber <= 8) {
     return "streak";
   }
   return "post";

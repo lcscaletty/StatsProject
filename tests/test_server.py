@@ -14,7 +14,7 @@ import server
 def build_submission(condition: str = "winning") -> server.Submission:
     balance = 1000.0
     rounds = []
-    phases = ["baseline"] * 4 + ["streak"] * 3 + ["post"] * 5
+    phases = ["baseline"] * 4 + ["streak"] * 4 + ["post"] * 4
     for number, phase in enumerate(phases, start=1):
         stake = float(math.floor(balance * 0.1))
         forced = phase == "streak"
@@ -129,7 +129,7 @@ class StudyApiTests(unittest.TestCase):
         submission = build_submission("losing")
 
         self.assertTrue(server.save_submission(submission))
-        self.assertTrue(all(record.bet_result == "loss" for record in submission.rounds[4:7]))
+        self.assertTrue(all(record.bet_result == "loss" for record in submission.rounds[4:8]))
 
     def test_rejects_weekly_slate_with_a_repeated_team(self) -> None:
         submission = build_submission()

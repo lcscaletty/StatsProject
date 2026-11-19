@@ -7,16 +7,16 @@ A browser-based, no-real-money betting simulation with a Python API for centrali
 Each participant makes one featured-game bet per week across a 12-week fictional season:
 
 1. Weeks 1–4 establish baseline choices.
-2. Featured-game outcomes in weeks 5–7 are assigned to create a winning or losing streak.
-3. Weeks 8–12 measure follow-up choices.
+2. Featured-game outcomes in weeks 5–8 are assigned to create a winning or losing streak.
+3. Weeks 9–12 measure follow-up choices.
 
-All 12 teams play once each week: the first 11 weeks form a round robin, followed by a rematch week. Each week has six games; one rotating featured game is available to bet on, while the other five games also affect the session standings. Featured outcomes outside weeks 5–7 and all non-featured outcomes are simulated using displayed odds.
+All 12 teams play once each week: the first 11 weeks form a round robin, followed by a rematch week. Each week has six games; one rotating featured game is available to bet on, while the other five games also affect the session standings. Featured outcomes outside weeks 5–8 and all non-featured outcomes are simulated using displayed odds.
 
 Participants are independently assigned at random to one of two conditions in their browser. The starting balance is 1,000 credits; each stake is an integer capped at 10% of the current balance. Decimal odds are shown for both teams. The study records the bet, odds, result, phase, balance, and all six weekly scorelines.
 
 Before participation, users are told that some details about result determination will be explained after the simulation. The assigned featured-game sequence is explained in the end-of-study debrief. Obtain any required ethics/IRB approval, and add your approved researcher contact, consent, privacy, withdrawal, and data-retention details before recruiting participants.
 
-Participants see a live win-loss table and completed scorelines from all games in their session. Score margins are influenced by displayed odds, while the featured-game winners in weeks 5–7 are assigned by condition. These are study stimuli and may affect later decisions; document them in the approved protocol and preregistration.
+Participants see a live win-loss table and completed scorelines from all games in their session. Score margins are influenced by displayed odds, while the featured-game winners in weeks 5–8 are assigned by condition. These are study stimuli and may affect later decisions; document them in the approved protocol and preregistration.
 
 ## Run locally
 
