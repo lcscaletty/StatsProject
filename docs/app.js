@@ -156,24 +156,24 @@ function loadSession() {
         updated = true;
       }
     }
-    const previousBetTeam = lastBetTeam(restored.rounds);
+    const previousFeaturedTeams = lastFeaturedTeams(restored.rounds);
     if (!restored.current_week && restored.current_event && !restored.finished) {
-      const repeatsPreviousBet = [restored.current_event.team_a, restored.current_event.team_b]
-        .includes(previousBetTeam);
+      const repeatsPreviousGame = [restored.current_event.team_a, restored.current_event.team_b]
+        .some((team) => previousFeaturedTeams.includes(team));
       restored.current_week = createWeek(
         restored.rounds.length + 1,
-        repeatsPreviousBet ? null : restored.current_event,
-        previousBetTeam
+        repeatsPreviousGame ? null : restored.current_event,
+        previousFeaturedTeams
       );
-      if (repeatsPreviousBet) {
+      if (repeatsPreviousGame) {
         restored.selected_team = null;
       }
       updated = true;
     } else if (restored.current_week && !restored.last_result && !restored.finished) {
-      const nextFeaturedIndex = featuredIndexWithoutTeam(
+      const nextFeaturedIndex = featuredIndexWithoutTeams(
         restored.current_week.games,
         restored.current_week.featured_index,
-        previousBetTeam
+        previousFeaturedTeams
       );
       if (nextFeaturedIndex !== restored.current_week.featured_index) {
         restored.current_week.featured_index = nextFeaturedIndex;
@@ -219,32 +219,33 @@ function createEvent(teamA, teamB) {
   };
 }
 
-function featuredIndexWithoutTeam(games, preferredIndex, excludedTeam) {
-  if (!excludedTeam) {
+function featuredIndexWithoutTeams(games, preferredIndex, excludedTeams = []) {
+  if (!excludedTeams.length) {
     return preferredIndex;
   }
+  const excluded = new Set(excludedTeams);
   for (let offset = 0; offset < games.length; offset += 1) {
     const index = (preferredIndex + offset) % games.length;
     const game = games[index];
-    if (game.team_a !== excludedTeam && game.team_b !== excludedTeam) {
+    if (!excluded.has(game.team_a) && !excluded.has(game.team_b)) {
       return index;
     }
   }
   return preferredIndex;
 }
 
-function createWeek(weekNumber, preservedEvent = null, excludedTeam = null) {
+function createWeek(weekNumber, preservedEvent = null, excludedTeams = []) {
   let fixtures = WEEKLY_SCHEDULE[weekNumber - 1].map((fixture) => ({ ...fixture }));
   if (
     preservedEvent &&
-    [preservedEvent.team_a, preservedEvent.team_b].includes(excludedTeam)
+    [preservedEvent.team_a, preservedEvent.team_b].some((team) => excludedTeams.includes(team))
   ) {
     preservedEvent = null;
   }
-  let featuredIndex = featuredIndexWithoutTeam(
+  let featuredIndex = featuredIndexWithoutTeams(
     fixtures,
     (weekNumber - 1) % fixtures.length,
-    excludedTeam
+    excludedTeams
   );
 
   if (preservedEvent) {
@@ -326,18 +327,9 @@ function gameRecordForRound(round) {
   };
 }
 
-function lastBetTeam(rounds) {
+function lastFeaturedTeams(rounds) {
   const previousRound = rounds[rounds.length - 1];
-  if (!previousRound) {
-    return null;
-  }
-  if (previousRound.selection === "A") {
-    return previousRound.team_a;
-  }
-  if (previousRound.selection === "B") {
-    return previousRound.team_b;
-  }
-  return null;
+  return previousRound ? [previousRound.team_a, previousRound.team_b] : [];
 }
 
 function createSession() {
@@ -469,7 +461,7 @@ function renderRound() {
   }
 
   if (!state.current_week || state.current_week.week !== roundNumber) {
-    state.current_week = createWeek(roundNumber, null, lastBetTeam(state.rounds));
+    state.current_week = createWeek(roundNumber, null, lastFeaturedTeams(state.rounds));
     state.current_event = state.current_week.games[state.current_week.featured_index];
     state.selected_team = null;
     saveSession();
@@ -477,9 +469,9 @@ function renderRound() {
     state.current_event =
       state.current_week.games[state.current_week.featured_index] ?? null;
   }
-  const previousBet = lastBetTeam(state.rounds);
-  document.querySelector("#odds-note").textContent = previousBet
-    ? `You backed ${previousBet} last week, so this week's featured matchup offers two different teams. The other five games also affect the league standings.`
+  const previousFeaturedTeams = lastFeaturedTeams(state.rounds);
+  document.querySelector("#odds-note").textContent = previousFeaturedTeams.length
+    ? `Last week's featured teams, ${previousFeaturedTeams.join(" and ")}, won't be in this week's featured matchup. The other five games also affect the league standings.`
     : "Make one pick from the featured matchup. Five other games are also played this week and count toward the league standings.";
   renderTeamOptions();
 
