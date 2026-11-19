@@ -1,14 +1,14 @@
 :root {
   color-scheme: light;
-  --paper: #f3f6f7;
+  --paper: #edf1f3;
   --panel: #ffffff;
   --ink: #172a35;
   --muted: #60727c;
   --line: #dbe3e7;
-  --green: #155e54;
-  --green-dark: #10483f;
+  --green: #145c65;
+  --green-dark: #0e454c;
   --lime: #e7f2ef;
-  --orange: #bf743d;
+  --orange: #d68532;
   --red: #b42318;
   --red-soft: #fff1f0;
   font-family: "Segoe UI", Arial, sans-serif;
@@ -47,12 +47,14 @@ footer {
 }
 
 .site-header {
-  min-height: 82px;
-  border-bottom: 1px solid var(--line);
+  width: 100%;
+  min-height: 76px;
+  padding-inline: max(24px, calc((100% - 1180px) / 2));
+  background: #172a35;
 }
 
 .wordmark {
-  color: var(--ink);
+  color: #fff;
   font: 700 13px "Segoe UI", Arial, sans-serif;
   letter-spacing: 0.1em;
   text-decoration: none;
@@ -70,27 +72,31 @@ footer,
 .wordmark span,
 .header-label,
 footer {
-  color: var(--muted);
+  color: #aebdc4;
   font-size: 10px;
+}
+
+.wordmark span {
+  color: #ff7468;
 }
 
 main {
   width: min(1180px, calc(100% - 48px));
   flex: 1;
-  margin: 64px auto 80px;
+  margin: 42px auto 60px;
 }
 
 .panel {
   padding: clamp(26px, 6vw, 58px);
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: 4px;
   background: var(--panel);
-  box-shadow: 0 24px 70px rgb(26 44 34 / 6%);
+  box-shadow: 0 8px 26px rgb(26 44 54 / 5%);
 }
 
 .intro-panel,
 .complete-panel {
-  max-width: 760px;
+  max-width: 850px;
   margin-inline: auto;
 }
 
@@ -290,9 +296,14 @@ input:focus-visible {
   display: grid;
   gap: 6px;
   padding: 12px 14px;
-  border: 1px solid #dce9e4;
-  border-radius: 6px;
-  background: #f3f8f6;
+  border: 1px solid #172a35;
+  border-radius: 3px;
+  color: #fff;
+  background: #172a35;
+}
+
+.balance-card .detail-label {
+  color: #bac7cd;
 }
 
 .balance-card strong {
@@ -341,15 +352,17 @@ input:focus-visible {
   gap: 14px;
   padding: 17px;
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-left: 3px solid transparent;
+  border-radius: 3px;
   cursor: pointer;
   transition: border-color 140ms ease, background 140ms ease;
 }
 
 .team-option:hover,
 .team-option.selected {
-  border-color: var(--green);
-  background: #f2f8f6;
+  border-color: #e6b9b4;
+  border-left-color: var(--red);
+  background: #fff8f6;
 }
 
 .team-option input {
@@ -476,6 +489,7 @@ input:focus-visible {
 
 .summary-details {
   margin-top: 28px;
+  grid-template-columns: repeat(2, 1fr);
 }
 
 .debrief {
@@ -524,6 +538,72 @@ input:focus-visible {
 
 .league-section {
   padding-top: 20px;
+}
+
+.week-section {
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--line);
+}
+
+.week-fixtures {
+  display: grid;
+  gap: 6px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.week-fixture {
+  padding: 9px 10px;
+  border: 1px solid #e3e8eb;
+  border-left: 3px solid transparent;
+  background: #fff;
+}
+
+.week-fixture.is-featured {
+  border-left-color: var(--red);
+  background: #fff8f6;
+}
+
+.fixture-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 5px;
+  color: var(--muted);
+  font: 9px Consolas, "Courier New", monospace;
+  letter-spacing: 0.06em;
+}
+
+.fixture-tag {
+  font-weight: 700;
+}
+
+.week-fixture.is-featured .fixture-tag {
+  color: var(--red);
+}
+
+.fixture-matchup {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.fixture-matchup span {
+  overflow-wrap: anywhere;
+}
+
+.fixture-matchup span:last-child {
+  text-align: right;
+}
+
+.fixture-matchup strong {
+  color: var(--muted);
+  font: 700 10px Consolas, "Courier New", monospace;
+  white-space: nowrap;
 }
 
 .section-heading h3 {
@@ -675,6 +755,11 @@ input:focus-visible {
   color: var(--red);
 }
 
+.game-result.is-loss {
+  border-left: 3px solid var(--red);
+  background: #fff8f7;
+}
+
 .game-result.is-win .bet-outcome {
   color: var(--green);
 }
@@ -761,12 +846,12 @@ footer {
 }
 
 @media (max-width: 620px) {
-  .site-header,
   footer {
     width: calc(100% - 32px);
   }
 
   .site-header {
+    padding-inline: 16px;
     min-height: 68px;
   }
 

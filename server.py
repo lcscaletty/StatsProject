@@ -1,6 +1,7 @@
 import csv
 import hmac
 import io
+import json
 import math
 import os
 import sqlite3
@@ -57,6 +58,7 @@ CSV_COLUMNS = [
     "team_b",
     "team_a_score",
     "team_b_score",
+    "week_games",
     "odds_a",
     "odds_b",
     "probability_a",
@@ -80,6 +82,7 @@ ROUND_COLUMNS = (
     "team_b",
     "team_a_score",
     "team_b_score",
+    "week_games",
     "odds_a",
     "odds_b",
     "probability_a",
@@ -112,6 +115,7 @@ SCHEMA = (
         team_b TEXT NOT NULL,
         team_a_score INTEGER NOT NULL DEFAULT 0,
         team_b_score INTEGER NOT NULL DEFAULT 0,
+        week_games TEXT NOT NULL DEFAULT '[]',
         odds_a DOUBLE PRECISION NOT NULL,
         odds_b DOUBLE PRECISION NOT NULL,
         probability_a DOUBLE PRECISION NOT NULL,
@@ -129,7 +133,11 @@ SCHEMA = (
     )
     """,
 )
-SCORE_COLUMNS = ("team_a_score", "team_b_score")
+ROUND_MIGRATIONS = {
+    "team_a_score": "INTEGER NOT NULL DEFAULT 0",
+    "team_b_score": "INTEGER NOT NULL DEFAULT 0",
+    "week_games": "TEXT NOT NULL DEFAULT '[]'",
+}
 
 app = FastAPI(title="Sports Betting Decisions Study API", docs_url=None, redoc_url=None)
 app.add_middleware(
@@ -138,6 +146,21 @@ app.add_middleware(
     allow_methods=["GET", "POST"],
     allow_headers=["Authorization", "Content-Type"],
 )
+
+
+class LeagueGame(BaseModel):
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
+
+    team_a: str = Field(min_length=1, max_length=48)
+    team_b: str = Field(min_length=1, max_length=48)
+    team_a_score: int = Field(ge=0, le=20)
+    team_b_score: int = Field(ge=0, le=20)
+    odds_a: float = Field(ge=1.3, le=3.3)
+    odds_b: float = Field(ge=1.3, le=3.3)
+    probability_a: float = Field(gt=0, lt=1)
+    winner: Literal["A", "B"]
+    featured: bool = False
+    bet_result: Literal["win", "loss"] | None = None
 
 
 class RoundRecord(BaseModel):
@@ -149,6 +172,7 @@ class RoundRecord(BaseModel):
     team_b: str = Field(min_length=1, max_length=48)
     team_a_score: int = Field(ge=0, le=20)
     team_b_score: int = Field(ge=0, le=20)
+    week_games: list[LeagueGame] = Field(default_factory=list, max_length=6)
     odds_a: float = Field(ge=1.3, le=3.3)
     odds_b: float = Field(ge=1.3, le=3.3)
     probability_a: float = Field(gt=0, lt=1)
@@ -205,10 +229,10 @@ def database() -> Generator[sqlite3.Connection | psycopg.Connection[dict[str, An
             existing_columns = {
                 row["name"] for row in connection.execute("PRAGMA table_info(rounds)")
             }
-        for column in SCORE_COLUMNS:
+        for column, definition in ROUND_MIGRATIONS.items():
             if column not in existing_columns:
                 connection.execute(
-                    f"ALTER TABLE rounds ADD COLUMN {column} INTEGER NOT NULL DEFAULT 0"
+                    f"ALTER TABLE rounds ADD COLUMN {column} {definition}"
                 )
         connection.commit()
         yield connection
@@ -254,6 +278,57 @@ def validate_submission(submission: Submission) -> None:
             record.winner == "B" and record.team_b_score <= record.team_a_score
         ):
             raise ValueError("The scoreline must agree with the winning team.")
+        if record.week_games:
+            if len(record.week_games) not in (1, 6):
+                raise ValueError("A study week must contain one legacy game or six league games.")
+            teams_in_week: list[str] = []
+            featured_games = []
+            for game in record.week_games:
+                if (
+                    game.team_a not in TEAM_NAMES
+                    or game.team_b not in TEAM_NAMES
+                    or game.team_a == game.team_b
+                ):
+                    raise ValueError("League games must use two different fictional teams.")
+                teams_in_week.extend((game.team_a, game.team_b))
+                implied_game_a = 1 / game.odds_a
+                implied_game_b = 1 / game.odds_b
+                expected_game_probability = implied_game_a / (implied_game_a + implied_game_b)
+                if not math.isclose(game.probability_a, expected_game_probability, abs_tol=0.001):
+                    raise ValueError("League-game probability must match its displayed odds.")
+                if (
+                    game.winner == "A" and game.team_a_score <= game.team_b_score
+                ) or (
+                    game.winner == "B" and game.team_b_score <= game.team_a_score
+                ):
+                    raise ValueError("Each league-game scoreline must agree with its winner.")
+                if game.featured:
+                    featured_games.append(game)
+                elif game.bet_result is not None:
+                    raise ValueError("Only the featured game may have a recorded bet result.")
+            if len(record.week_games) == 6 and (
+                len(teams_in_week) != len(TEAM_NAMES) or set(teams_in_week) != TEAM_NAMES
+            ):
+                raise ValueError("Every team must play exactly once in each study week.")
+            if len(featured_games) != 1:
+                raise ValueError("Each study week must have exactly one featured game.")
+            featured_game = featured_games[0]
+            if (
+                featured_game.team_a != record.team_a
+                or featured_game.team_b != record.team_b
+                or featured_game.team_a_score != record.team_a_score
+                or featured_game.team_b_score != record.team_b_score
+                or featured_game.winner != record.winner
+                or featured_game.bet_result != record.bet_result
+                or not math.isclose(featured_game.odds_a, record.odds_a, abs_tol=0.01)
+                or not math.isclose(featured_game.odds_b, record.odds_b, abs_tol=0.01)
+                or not math.isclose(
+                    featured_game.probability_a,
+                    record.probability_a,
+                    abs_tol=0.001,
+                )
+            ):
+                raise ValueError("The featured league game must match the recorded bet.")
         if not math.isclose(record.balance_before, previous_balance, abs_tol=0.02):
             raise ValueError("Each round's opening balance must match the previous round.")
 
@@ -300,6 +375,26 @@ def save_submission(submission: Submission) -> bool:
         round_values = []
         for record in submission.rounds:
             values = record.model_dump()
+            if values["week_games"]:
+                values["week_games"] = json.dumps(values["week_games"], separators=(",", ":"))
+            else:
+                values["week_games"] = json.dumps(
+                    [
+                        {
+                            "team_a": record.team_a,
+                            "team_b": record.team_b,
+                            "team_a_score": record.team_a_score,
+                            "team_b_score": record.team_b_score,
+                            "odds_a": record.odds_a,
+                            "odds_b": record.odds_b,
+                            "probability_a": record.probability_a,
+                            "winner": record.winner,
+                            "featured": True,
+                            "bet_result": record.bet_result,
+                        }
+                    ],
+                    separators=(",", ":"),
+                )
             round_values.append(
                 (
                     participant_id,
@@ -347,8 +442,9 @@ def export_csv(authorization: str | None = Header(default=None)) -> StreamingRes
             """
             SELECT s.participant_id, s.condition, s.submitted_at, r.round_number, r.phase,
                    r.team_a, r.team_b, r.team_a_score, r.team_b_score, r.odds_a, r.odds_b,
-                   r.probability_a, r.selection, r.selected_odds, r.stake, r.stake_share,
-                   r.winner, r.bet_result, r.profit, r.balance_before, r.balance_after, r.forced
+                   r.week_games, r.probability_a, r.selection, r.selected_odds, r.stake,
+                   r.stake_share, r.winner, r.bet_result, r.profit, r.balance_before,
+                   r.balance_after, r.forced
             FROM rounds AS r
             JOIN submissions AS s USING (participant_id)
             ORDER BY s.submitted_at, s.participant_id, r.round_number

@@ -3,23 +3,23 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="theme-color" content="#f5f4ef">
-    <title>Sports Betting Decisions Study</title>
+    <meta name="theme-color" content="#172a35">
+    <title>Get Even. Or Get Even Worse.</title>
     <link rel="stylesheet" href="./styles.css">
     <script src="./config.js"></script>
     <script src="./app.js" defer></script>
   </head>
   <body>
     <header class="site-header">
-      <a class="wordmark" href="./" aria-label="Sports Betting Decisions Study home">FIELD NOTES <span>/ STUDY 01</span></a>
-      <span class="header-label">SIMULATED SPORTS STUDY</span>
+      <a class="wordmark" href="./" aria-label="Get Even. Or Get Even Worse. home">GET EVEN. <span>OR GET EVEN WORSE.</span></a>
+      <span class="header-label">THE WEEKLY LEAGUE</span>
     </header>
 
     <main>
       <section class="intro-panel panel" id="intro">
-        <p class="eyebrow">DECISION-MAKING RESEARCH</p>
-        <h1>How do results<br>shape the next bet?</h1>
-        <p class="lede">Take part in a short sports betting simulation. You will make decisions with study credits while fictional teams compete.</p>
+        <p class="eyebrow">A FICTIONAL SPORTS LEAGUE</p>
+        <h1>Get even.<br>Or get even worse.</h1>
+        <p class="lede">One pick every week. Six games on the slate. Track your run across a full season of fictional teams and study-credit wagers.</p>
 
         <div class="study-details">
           <div>
@@ -27,8 +27,8 @@
             <strong>About 5 minutes</strong>
           </div>
           <div>
-            <span class="detail-label">ROUNDS</span>
-            <strong>12 simulated bets</strong>
+            <span class="detail-label">SEASON</span>
+            <strong>12 weeks · 72 games</strong>
           </div>
           <div>
             <span class="detail-label">STAKES</span>
@@ -38,7 +38,7 @@
 
         <div class="notice">
           <strong>Before you begin</strong>
-          <p>This simulation uses no real money. Standings and scores show games completed in your current session. Odds influence game score margins; the middle three winners are assigned to create a winning or losing streak and may not follow the odds. You will receive a full explanation after the simulation.</p>
+          <p>This is a fictional sports league simulation using study credits; no real money is involved. Each week features one game to bet on while a full 12-team schedule is played. Some details about how results are determined will be explained after the simulation.</p>
           <p>The site does not ask for your name or contact details. Do not enter any personal information.</p>
           <p>Responses are sent to the study server when you finish. For questions about the research, contact the researcher who shared this link.</p>
         </div>
@@ -49,7 +49,7 @@
         </label>
 
         <p class="server-status" id="server-status" role="status" aria-live="polite">Checking study server…</p>
-        <button class="button button-primary" id="begin-button" type="button" disabled>Begin simulation <span aria-hidden="true">→</span></button>
+        <button class="button button-primary" id="begin-button" type="button" disabled>Enter the season <span aria-hidden="true">→</span></button>
       </section>
 
       <div class="study-layout" id="study-layout" hidden>
@@ -57,8 +57,8 @@
           <section class="game-panel panel" id="game" hidden>
             <div class="game-topline">
               <div>
-                <p class="eyebrow" id="phase-label">BASELINE</p>
-                <h1 id="round-heading">Round 1 of 12</h1>
+                <p class="eyebrow" id="phase-label">WEEK 01 · LEAGUE PLAY</p>
+                <h1 id="round-heading">Week 1 of 12</h1>
               </div>
               <div class="balance-card">
                 <span class="detail-label">STUDY CREDITS</span>
@@ -71,8 +71,8 @@
             </div>
 
             <div class="matchup">
-              <p class="detail-label">CURRENT MATCHUP · FICTIONAL TEAMS</p>
-              <p class="odds-note">Outside the assigned three-game streak, odds influence the simulated winner. Odds also influence score margins in all rounds. During the streak, the winner is assigned for the study.</p>
+              <p class="detail-label">THIS WEEK'S FEATURED GAME</p>
+              <p class="odds-note">Make one pick from the featured matchup. Five other games are also played this week and count toward the league standings.</p>
               <div class="team-grid" id="team-options"></div>
             </div>
 
@@ -112,15 +112,11 @@
                 <span class="detail-label">FOLLOW-UP MEAN STAKE</span>
                 <strong id="follow-up-summary">—</strong>
               </div>
-              <div>
-                <span class="detail-label">ASSIGNED OUTCOME</span>
-                <strong id="condition-summary">—</strong>
-              </div>
             </div>
 
             <div class="notice debrief">
               <strong>Study explanation</strong>
-              <p>The study examines whether a short run of wins or losses is followed by a change in bet size. Your middle three outcomes were assigned to create the <span id="debrief-condition"></span> sequence; outcomes in the other rounds were simulated from the displayed odds.</p>
+              <p>The study examines whether a short run of wins or losses is followed by a change in bet size. The featured game outcomes in weeks 5–7 were assigned to create the <span id="debrief-condition"></span> sequence. Other game outcomes were simulated using the displayed odds, which also influence score margins.</p>
             </div>
 
             <p class="server-status" id="upload-status" role="status" aria-live="polite"></p>
@@ -132,21 +128,29 @@
           </section>
         </div>
 
-        <aside class="league-panel panel" aria-label="League standings and completed games">
+        <aside class="league-panel panel" aria-label="Weekly schedule, league standings and completed games">
           <div class="league-header">
             <div>
-              <p class="eyebrow">CURRENT SESSION</p>
-              <h2>League</h2>
+              <p class="eyebrow">THE SEASON</p>
+              <h2>League desk</h2>
             </div>
             <span class="league-live"><span aria-hidden="true"></span> LIVE</span>
           </div>
+
+          <section class="league-section week-section" aria-labelledby="week-heading">
+            <div class="section-heading">
+              <h3 id="week-heading">This week's slate</h3>
+              <span id="week-label">WEEK 01</span>
+            </div>
+            <ol class="week-fixtures" id="week-fixtures"></ol>
+          </section>
 
           <section class="league-section" aria-labelledby="standings-heading">
             <div class="section-heading">
               <h3 id="standings-heading">Standings</h3>
               <span id="games-played">0 games</span>
             </div>
-            <p class="league-caption">Win-loss records · this session only</p>
+            <p class="league-caption">Every game counts · win-loss records</p>
             <div class="standings-scroll">
               <table class="standings-table">
                 <thead>
@@ -163,7 +167,7 @@
               <span class="detail-label">LATEST FIRST</span>
             </div>
             <ol class="game-results" id="past-games"></ol>
-            <p class="empty-games" id="empty-games">Game results will appear here after each round.</p>
+            <p class="empty-games" id="empty-games">Final scores appear here after the week's games.</p>
           </section>
         </aside>
       </div>
@@ -172,8 +176,8 @@
     </main>
 
     <footer>
-      <span>FICTIONAL TEAMS · SIMULATED CREDITS · NO REAL-WORLD BETTING</span>
-      <span>STUDY VERSION 1.0</span>
+      <span>FICTIONAL TEAMS · STUDY CREDITS · NO REAL-WORLD BETTING</span>
+      <span>THE WEEKLY LEAGUE</span>
     </footer>
   </body>
 </html>

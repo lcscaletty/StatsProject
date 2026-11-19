@@ -1,3 +1,4 @@
+import json
 import math
 import sqlite3
 import tempfile
@@ -26,29 +27,65 @@ def build_submission(condition: str = "winning") -> server.Submission:
         selected_odds = 1.9
         profit = round(stake * (selected_odds - 1), 2) if result == "win" else -stake
         after = round(balance + profit, 2)
-        rounds.append(
+        round_record = {
+            "round_number": number,
+            "phase": phase,
+            "team_a": sorted(server.TEAM_NAMES)[number % len(server.TEAM_NAMES)],
+            "team_b": sorted(server.TEAM_NAMES)[(number + 1) % len(server.TEAM_NAMES)],
+            "team_a_score": 3 if winner == "A" else 2,
+            "team_b_score": 3 if winner == "B" else 2,
+            "odds_a": selected_odds,
+            "odds_b": 1.9,
+            "probability_a": 0.5,
+            "selection": selection,
+            "selected_odds": selected_odds,
+            "stake": stake,
+            "stake_share": stake / balance,
+            "winner": winner,
+            "bet_result": result,
+            "profit": profit,
+            "balance_before": balance,
+            "balance_after": after,
+            "forced": forced,
+        }
+        round_record["week_games"] = [
             {
-                "round_number": number,
-                "phase": phase,
-                "team_a": sorted(server.TEAM_NAMES)[number % len(server.TEAM_NAMES)],
-                "team_b": sorted(server.TEAM_NAMES)[(number + 1) % len(server.TEAM_NAMES)],
-                "team_a_score": 3 if winner == "A" else 2,
-                "team_b_score": 3 if winner == "B" else 2,
-                "odds_a": selected_odds,
-                "odds_b": 1.9,
-                "probability_a": 0.5,
-                "selection": selection,
-                "selected_odds": selected_odds,
-                "stake": stake,
-                "stake_share": stake / balance,
-                "winner": winner,
+                **{
+                    key: round_record[key]
+                    for key in (
+                        "team_a",
+                        "team_b",
+                        "team_a_score",
+                        "team_b_score",
+                        "odds_a",
+                        "odds_b",
+                        "probability_a",
+                        "winner",
+                    )
+                },
+                "featured": True,
                 "bet_result": result,
-                "profit": profit,
-                "balance_before": balance,
-                "balance_after": after,
-                "forced": forced,
             }
+        ]
+        remaining_teams = sorted(
+            server.TEAM_NAMES - {round_record["team_a"], round_record["team_b"]}
         )
+        for index in range(0, len(remaining_teams), 2):
+            round_record["week_games"].append(
+                {
+                    "team_a": remaining_teams[index],
+                    "team_b": remaining_teams[index + 1],
+                    "team_a_score": 3,
+                    "team_b_score": 2,
+                    "odds_a": 1.9,
+                    "odds_b": 1.9,
+                    "probability_a": 0.5,
+                    "winner": "A",
+                    "featured": False,
+                    "bet_result": None,
+                }
+            )
+        rounds.append(round_record)
         balance = after
     return server.Submission(
         participant_id=uuid4(),
@@ -80,15 +117,40 @@ class StudyApiTests(unittest.TestCase):
             score_count = connection.execute(
                 "SELECT COUNT(*) FROM rounds WHERE team_a_score > team_b_score OR team_b_score > team_a_score"
             ).fetchone()[0]
+            saved_week_games = connection.execute(
+                "SELECT week_games FROM rounds LIMIT 1"
+            ).fetchone()[0]
         self.assertEqual(participant_count, 1)
         self.assertEqual(round_count, 12)
         self.assertEqual(score_count, 12)
+        self.assertEqual(len(json.loads(saved_week_games)), 6)
 
     def test_accepts_a_valid_losing_condition(self) -> None:
         submission = build_submission("losing")
 
         self.assertTrue(server.save_submission(submission))
         self.assertTrue(all(record.bet_result == "loss" for record in submission.rounds[4:7]))
+
+    def test_rejects_weekly_slate_with_a_repeated_team(self) -> None:
+        submission = build_submission()
+        submission.rounds[0].week_games[1].team_a = submission.rounds[0].week_games[0].team_a
+
+        with self.assertRaisesRegex(ValueError, "Every team must play exactly once"):
+            server.validate_submission(submission)
+
+    def test_accepts_legacy_single_game_rounds(self) -> None:
+        submission = build_submission()
+        for record in submission.rounds:
+            record.week_games = record.week_games[:1]
+
+        server.validate_submission(submission)
+
+    def test_rejects_bet_result_on_non_featured_game(self) -> None:
+        submission = build_submission()
+        submission.rounds[0].week_games[1].bet_result = "win"
+
+        with self.assertRaisesRegex(ValueError, "Only the featured game"):
+            server.validate_submission(submission)
 
     def test_rejects_a_streak_that_does_not_match_condition(self) -> None:
         submission = build_submission("winning")
@@ -137,8 +199,7 @@ class StudyApiTests(unittest.TestCase):
                 row["name"] for row in connection.execute("PRAGMA table_info(rounds)")
             }
 
-        self.assertIn("team_a_score", columns)
-        self.assertIn("team_b_score", columns)
+        self.assertTrue(server.ROUND_MIGRATIONS.keys() <= columns)
 
     def test_postgres_backend_uses_postgres_parameters(self) -> None:
         connection = MagicMock()
@@ -173,7 +234,7 @@ class StudyApiTests(unittest.TestCase):
             call for call in connection.execute.call_args_list
             if call.args[0].startswith("ALTER TABLE rounds ADD COLUMN")
         ]
-        self.assertEqual(len(migrations), 2)
+        self.assertEqual(len(migrations), 3)
 
 
 if __name__ == "__main__":

@@ -12,6 +12,7 @@ const CSV_COLUMNS = [
   "team_b",
   "team_a_score",
   "team_b_score",
+  "week_games",
   "odds_a",
   "odds_b",
   "probability_a",
@@ -41,6 +42,33 @@ const TEAMS = [
   "Goldenfield Giants"
 ];
 
+function createSchedule() {
+  let rotation = [...TEAMS];
+  const firstLeg = [];
+  for (let week = 0; week < TEAMS.length - 1; week += 1) {
+    const fixtures = [];
+    for (let game = 0; game < TEAMS.length / 2; game += 1) {
+      let teamA = rotation[game];
+      let teamB = rotation[rotation.length - 1 - game];
+      if ((week + game) % 2) {
+        [teamA, teamB] = [teamB, teamA];
+      }
+      fixtures.push({ team_a: teamA, team_b: teamB });
+    }
+    firstLeg.push(fixtures);
+    const movingTeams = rotation.slice(1);
+    movingTeams.unshift(movingTeams.pop());
+    rotation = [rotation[0], ...movingTeams];
+  }
+
+  const returnLeg = firstLeg[0].map(({ team_a, team_b }) => ({
+    team_a: team_b,
+    team_b: team_a
+  }));
+  return [...firstLeg, returnLeg];
+}
+
+const WEEKLY_SCHEDULE = createSchedule();
 const apiBaseUrl = (window.STUDY_CONFIG?.apiBaseUrl ?? "").replace(/\/+$/, "");
 const intro = document.querySelector("#intro");
 const studyLayout = document.querySelector("#study-layout");
@@ -88,6 +116,10 @@ function loadSession() {
         Object.assign(round, createScoreline(round.probability_a, round.winner));
         updated = true;
       }
+      if (!Array.isArray(round.week_games)) {
+        round.week_games = [gameRecordForRound(round)];
+        updated = true;
+      }
     }
     if (restored.last_result && !Number.isInteger(restored.last_result.team_a_score)) {
       const savedRound = restored.rounds.find(
@@ -98,6 +130,13 @@ function loadSession() {
         restored.last_result.team_b_score = savedRound.team_b_score;
         updated = true;
       }
+    }
+    if (!restored.current_week && restored.current_event && !restored.finished) {
+      restored.current_week = createWeek(restored.rounds.length + 1, restored.current_event);
+      updated = true;
+    } else if (restored.current_week && !restored.last_result) {
+      restored.current_event =
+        restored.current_week.games[restored.current_week.featured_index] ?? null;
     }
     if (updated) {
       sessionStorage.setItem(SESSION_KEY, JSON.stringify(restored));
@@ -117,17 +156,7 @@ function saveSession() {
   }
 }
 
-function randomItem(items) {
-  return items[Math.floor(Math.random() * items.length)];
-}
-
-function createEvent() {
-  const teamA = randomItem(TEAMS);
-  let teamB = randomItem(TEAMS);
-  while (teamB === teamA) {
-    teamB = randomItem(TEAMS);
-  }
-
+function createEvent(teamA, teamB) {
   const probabilityA = 0.3 + Math.random() * 0.4;
   const margin = 1.05;
   const oddsA = round2(1 / (probabilityA * margin));
@@ -141,6 +170,57 @@ function createEvent() {
     odds_a: oddsA,
     odds_b: oddsB
   };
+}
+
+function createWeek(weekNumber, preservedEvent = null) {
+  let fixtures = WEEKLY_SCHEDULE[weekNumber - 1].map((fixture) => ({ ...fixture }));
+  let featuredIndex = (weekNumber - 1) % fixtures.length;
+
+  if (preservedEvent) {
+    const matchingFixture = fixtures.findIndex(
+      (fixture) =>
+        fixture.team_a === preservedEvent.team_a &&
+        fixture.team_b === preservedEvent.team_b
+    );
+    if (matchingFixture >= 0) {
+      featuredIndex = matchingFixture;
+    } else {
+      const remainingTeams = fixtures
+        .flatMap((fixture) => [fixture.team_a, fixture.team_b])
+        .filter((team) => team !== preservedEvent.team_a && team !== preservedEvent.team_b);
+      let nextTeam = 0;
+      fixtures = fixtures.map((fixture, index) => {
+        if (index === featuredIndex) {
+          return {
+            team_a: preservedEvent.team_a,
+            team_b: preservedEvent.team_b
+          };
+        }
+        const replacement = {
+          team_a: remainingTeams[nextTeam],
+          team_b: remainingTeams[nextTeam + 1]
+        };
+        nextTeam += 2;
+        return replacement;
+      });
+    }
+  }
+
+  const games = fixtures.map((fixture, index) => ({
+    ...createEvent(fixture.team_a, fixture.team_b),
+    featured: index === featuredIndex,
+    bet_result: null
+  }));
+  if (preservedEvent) {
+    games[featuredIndex] = {
+      ...games[featuredIndex],
+      ...preservedEvent,
+      featured: true,
+      bet_result: null
+    };
+  }
+
+  return { week: weekNumber, featured_index: featuredIndex, games };
 }
 
 function round2(value) {
@@ -160,6 +240,21 @@ function createScoreline(probabilityA, winner) {
     : { team_a_score: lowerScore, team_b_score: higherScore };
 }
 
+function gameRecordForRound(round) {
+  return {
+    team_a: round.team_a,
+    team_b: round.team_b,
+    team_a_score: round.team_a_score,
+    team_b_score: round.team_b_score,
+    odds_a: round.odds_a,
+    odds_b: round.odds_b,
+    probability_a: round.probability_a,
+    winner: round.winner,
+    featured: true,
+    bet_result: round.bet_result
+  };
+}
+
 function createSession() {
   return {
     participant_id: crypto.randomUUID(),
@@ -167,6 +262,7 @@ function createSession() {
     balance: STARTING_CREDITS,
     rounds: [],
     current_event: null,
+    current_week: null,
     selected_team: null,
     finished: false,
     uploaded: false
@@ -183,14 +279,8 @@ function phaseForRound(roundNumber) {
   return "post";
 }
 
-function phaseLabel(phase) {
-  if (phase === "baseline") {
-    return "BASELINE";
-  }
-  if (phase === "streak") {
-    return "OUTCOME SEQUENCE";
-  }
-  return "FOLLOW-UP";
+function phaseLabel(roundNumber) {
+  return `WEEK ${String(roundNumber).padStart(2, "0")} · LEAGUE PLAY`;
 }
 
 function formatCredits(value) {
@@ -271,8 +361,8 @@ function renderRound() {
   const progress = Math.round((state.rounds.length / TOTAL_ROUNDS) * 100);
   const progressBar = document.querySelector(".progress-track");
 
-  document.querySelector("#phase-label").textContent = phaseLabel(phase);
-  document.querySelector("#round-heading").textContent = `Round ${roundNumber} of ${TOTAL_ROUNDS}`;
+  document.querySelector("#phase-label").textContent = phaseLabel(roundNumber);
+  document.querySelector("#round-heading").textContent = `Week ${roundNumber} of ${TOTAL_ROUNDS}`;
   document.querySelector("#balance-value").textContent = formatCredits(state.balance);
   document.querySelector("#progress-value").style.width = `${progress}%`;
   progressBar.setAttribute("aria-valuenow", String(state.rounds.length));
@@ -285,10 +375,14 @@ function renderRound() {
     return;
   }
 
-  if (!state.current_event) {
-    state.current_event = createEvent();
+  if (!state.current_week || state.current_week.week !== roundNumber) {
+    state.current_week = createWeek(roundNumber);
+    state.current_event = state.current_week.games[state.current_week.featured_index];
     state.selected_team = null;
     saveSession();
+  } else {
+    state.current_event =
+      state.current_week.games[state.current_week.featured_index] ?? null;
   }
   renderTeamOptions();
 
@@ -379,16 +473,39 @@ function placeBet() {
   const scoreline = createScoreline(event.probability_a, winner);
   const profit = round2(betResult === "win" ? stake * (selectedOdds - 1) : -stake);
   const balanceAfter = round2(balanceBefore + profit);
+  const completedGames = state.current_week.games.map((game, index) => {
+    if (index === state.current_week.featured_index) {
+      return {
+        ...game,
+        ...scoreline,
+        winner,
+        featured: true,
+        bet_result: betResult
+      };
+    }
+    const gameWinner = Math.random() < game.probability_a ? "A" : "B";
+    return {
+      ...game,
+      ...createScoreline(game.probability_a, gameWinner),
+      winner: gameWinner,
+      featured: false,
+      bet_result: null
+    };
+  });
+  state.current_week.games = completedGames;
+  const completedFeaturedGame = completedGames[state.current_week.featured_index];
 
   const record = {
     round_number: roundNumber,
     phase,
-    team_a: event.team_a,
-    team_b: event.team_b,
-    ...scoreline,
-    odds_a: event.odds_a,
-    odds_b: event.odds_b,
-    probability_a: event.probability_a,
+    team_a: completedFeaturedGame.team_a,
+    team_b: completedFeaturedGame.team_b,
+    team_a_score: completedFeaturedGame.team_a_score,
+    team_b_score: completedFeaturedGame.team_b_score,
+    week_games: completedGames,
+    odds_a: completedFeaturedGame.odds_a,
+    odds_b: completedFeaturedGame.odds_b,
+    probability_a: completedFeaturedGame.probability_a,
     selection: state.selected_team,
     selected_odds: selectedOdds,
     stake,
@@ -418,7 +535,6 @@ function placeBet() {
 
 function renderLastResult() {
   const result = state.last_result;
-  const winnerName = result.winner === "A" ? result.team_a : result.team_b;
   const won = result.bet_result === "win";
   const feedback = document.querySelector("#round-feedback");
   feedback.classList.toggle("is-loss", !won);
@@ -436,9 +552,15 @@ function renderLeague() {
   const standings = new Map(
     TEAMS.map((team) => [team, { team, wins: 0, losses: 0 }])
   );
-  for (const round of state.rounds) {
-    const winnerTeam = round.winner === "A" ? round.team_a : round.team_b;
-    const loserTeam = round.winner === "A" ? round.team_b : round.team_a;
+  const completedGames = state.rounds.flatMap((round) => {
+    const weekGames = round.week_games?.length
+      ? round.week_games
+      : [gameRecordForRound(round)];
+    return weekGames.map((game) => ({ ...game, round_number: round.round_number }));
+  });
+  for (const game of completedGames) {
+    const winnerTeam = game.winner === "A" ? game.team_a : game.team_b;
+    const loserTeam = game.winner === "A" ? game.team_b : game.team_a;
     standings.get(winnerTeam).wins += 1;
     standings.get(loserTeam).losses += 1;
   }
@@ -451,9 +573,8 @@ function renderLeague() {
     return secondRate - firstRate || second.wins - first.wins || first.team.localeCompare(second.team);
   });
 
-  const currentTeams = new Set(
-    state.current_event ? [state.current_event.team_a, state.current_event.team_b] : []
-  );
+  const currentEvent = state.current_week?.games[state.current_week.featured_index];
+  const currentTeams = new Set(currentEvent ? [currentEvent.team_a, currentEvent.team_b] : []);
   const standingsBody = document.querySelector("#standings-body");
   standingsBody.replaceChildren();
   for (const record of orderedStandings) {
@@ -475,42 +596,80 @@ function renderLeague() {
   }
 
   const gamesPlayed = document.querySelector("#games-played");
-  gamesPlayed.textContent = `${state.rounds.length} ${state.rounds.length === 1 ? "game" : "games"}`;
+  gamesPlayed.textContent = `${completedGames.length} / ${TOTAL_ROUNDS * 6} GAMES`;
+
+  const weekLabel = document.querySelector("#week-label");
+  const weekFixtures = document.querySelector("#week-fixtures");
+  weekFixtures.replaceChildren();
+  if (state.current_week) {
+    weekLabel.textContent = `WEEK ${String(state.current_week.week).padStart(2, "0")}`;
+    state.current_week.games.forEach((game, index) => {
+      const item = document.createElement("li");
+      item.className = `week-fixture${game.featured ? " is-featured" : ""}${game.winner ? " is-complete" : ""}`;
+
+      const heading = document.createElement("div");
+      heading.className = "fixture-heading";
+      const gameNumber = document.createElement("span");
+      gameNumber.textContent = `GAME ${String(index + 1).padStart(2, "0")}`;
+      const gameTag = document.createElement("span");
+      gameTag.className = "fixture-tag";
+      gameTag.textContent = game.featured ? "YOUR PICK" : game.winner ? "FINAL" : "IN PLAY";
+      heading.append(gameNumber, gameTag);
+
+      const matchup = document.createElement("div");
+      matchup.className = "fixture-matchup";
+      const teamA = document.createElement("span");
+      teamA.textContent = game.team_a;
+      const score = document.createElement("strong");
+      score.textContent = game.winner
+        ? `${game.team_a_score} – ${game.team_b_score}`
+        : "VS";
+      const teamB = document.createElement("span");
+      teamB.textContent = game.team_b;
+      matchup.append(teamA, score, teamB);
+      item.append(heading, matchup);
+      weekFixtures.append(item);
+    });
+  } else {
+    weekLabel.textContent = "SEASON";
+  }
 
   const gameResults = document.querySelector("#past-games");
   gameResults.replaceChildren();
-  document.querySelector("#empty-games").hidden = state.rounds.length > 0;
-  for (const round of [...state.rounds].reverse()) {
+  document.querySelector("#empty-games").hidden = completedGames.length > 0;
+  for (const game of [...completedGames].reverse()) {
     const item = document.createElement("li");
-    item.className = `game-result is-${round.bet_result}`;
+    item.className = `game-result${game.bet_result ? ` is-${game.bet_result}` : ""}`;
 
     const heading = document.createElement("div");
     heading.className = "game-result-topline";
-    const roundLabel = document.createElement("span");
-    roundLabel.textContent = `ROUND ${String(round.round_number).padStart(2, "0")}`;
+    const weekNumber = document.createElement("span");
+    weekNumber.textContent = `WEEK ${String(game.round_number).padStart(2, "0")}`;
     const betOutcome = document.createElement("span");
     betOutcome.className = "bet-outcome";
-    betOutcome.textContent = round.bet_result === "win" ? "BET WON" : "BET LOST";
-    heading.append(roundLabel, betOutcome);
+    betOutcome.textContent = game.bet_result
+      ? game.bet_result === "win" ? "BET WON" : "BET LOST"
+      : game.featured ? "FEATURED GAME" : "LEAGUE RESULT";
+    heading.append(weekNumber, betOutcome);
 
     const scoreline = document.createElement("div");
     scoreline.className = "game-result-scoreline";
     const teamA = document.createElement("span");
-    teamA.className = `game-result-team${round.winner === "A" ? " is-winner" : ""}`;
+    teamA.className = `game-result-team${game.winner === "A" ? " is-winner" : ""}`;
     const teamAName = document.createElement("span");
-    teamAName.textContent = round.team_a;
+    teamAName.textContent = game.team_a;
     const teamAScore = document.createElement("strong");
     teamAScore.className = "game-result-score";
-    teamAScore.textContent = String(round.team_a_score);
+    teamAScore.textContent = String(game.team_a_score);
     teamA.append(teamAName, teamAScore);
 
     const teamB = document.createElement("span");
-    teamB.className = `game-result-team${round.winner === "B" ? " is-winner" : ""}`;
+    teamB.className = `game-result-team${game.winner === "B" ? " is-winner" : ""}`;
     const teamBName = document.createElement("span");
-    teamBName.textContent = round.team_b;
+    teamBName.textContent = game.team_b;
     const teamBScore = document.createElement("strong");
     teamBScore.className = "game-result-score";
-    teamBScore.textContent = String(round.team_b_score);
+    teamBScore.textContent = String(game.team_b_score);
     teamB.append(teamBName, teamBScore);
 
     const separator = document.createElement("span");
@@ -525,6 +684,8 @@ function renderLeague() {
 function continueSimulation() {
   state.last_result = null;
   state.current_event = null;
+  state.current_week = null;
+  state.selected_team = null;
   saveSession();
   render();
 }
@@ -538,8 +699,6 @@ function meanStakeShare(phase) {
 function renderCompletion() {
   document.querySelector("#baseline-summary").textContent = meanStakeShare("baseline");
   document.querySelector("#follow-up-summary").textContent = meanStakeShare("post");
-  const conditionLabel = state.condition === "winning" ? "Win sequence" : "Loss sequence";
-  document.querySelector("#condition-summary").textContent = conditionLabel;
   document.querySelector("#debrief-condition").textContent = state.condition === "winning" ? "winning" : "losing";
   document.querySelector("#completion-copy").textContent =
     `Your random study ID is ${state.participant_id}. The study server receives your betting choices and study condition, but not a name or contact detail.`;
@@ -616,7 +775,12 @@ function csvEscape(value) {
 function downloadCsv() {
   const lines = [CSV_COLUMNS.map(csvEscape).join(",")];
   for (const round of state.rounds) {
-    const row = { participant_id: state.participant_id, condition: state.condition, ...round };
+    const row = {
+      participant_id: state.participant_id,
+      condition: state.condition,
+      ...round,
+      week_games: JSON.stringify(round.week_games ?? [gameRecordForRound(round)])
+    };
     lines.push(CSV_COLUMNS.map((column) => csvEscape(row[column])).join(","));
   }
   const blob = new Blob([`${lines.join("\r\n")}\r\n`], { type: "text/csv;charset=utf-8" });
@@ -652,7 +816,6 @@ beginButton.addEventListener("click", () => {
   }
   clearError();
   state = createSession();
-  state.current_event = createEvent();
   saveSession();
   render();
 });
