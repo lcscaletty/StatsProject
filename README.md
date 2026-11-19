@@ -14,6 +14,8 @@ Participants are independently assigned at random to one of the two conditions i
 
 The outcome-sequence manipulation is disclosed before participation, and the particular assigned sequence is explained at the end. The outcome phase is intentionally controlled rather than generated from the displayed odds. Obtain any required ethics/IRB approval, and add your approved researcher contact, consent, privacy, withdrawal, and data-retention details before recruiting participants.
 
+Participants see a live win-loss table and completed scorelines from their own 12-game session. Score margins are influenced by the displayed odds, while the three middle winners are assigned by condition. This is part of the study stimulus and may affect later decisions; document it in the approved protocol and preregistration.
+
 ## Run locally
 
 Use Python 3.10 or later.

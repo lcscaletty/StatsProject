@@ -38,7 +38,8 @@
 
         <div class="notice">
           <strong>Before you begin</strong>
-          <p>Some game outcomes are assigned as part of the study. You will receive a full explanation after the simulation. The site does not ask for your name or contact details. Do not enter any personal information.</p>
+          <p>This simulation uses no real money. Standings and scores show games completed in your current session. Odds influence game score margins; the middle three winners are assigned to create a winning or losing streak and may not follow the odds. You will receive a full explanation after the simulation.</p>
+          <p>The site does not ask for your name or contact details. Do not enter any personal information.</p>
           <p>Responses are sent to the study server when you finish. For questions about the research, contact the researcher who shared this link.</p>
         </div>
 
@@ -51,77 +52,121 @@
         <button class="button button-primary" id="begin-button" type="button" disabled>Begin simulation <span aria-hidden="true">→</span></button>
       </section>
 
-      <section class="game-panel panel" id="game" hidden>
-        <div class="game-topline">
-          <div>
-            <p class="eyebrow" id="phase-label">BASELINE</p>
-            <h1 id="round-heading">Round 1 of 12</h1>
+      <div class="study-layout" id="study-layout" hidden>
+        <div class="study-content">
+          <section class="game-panel panel" id="game" hidden>
+            <div class="game-topline">
+              <div>
+                <p class="eyebrow" id="phase-label">BASELINE</p>
+                <h1 id="round-heading">Round 1 of 12</h1>
+              </div>
+              <div class="balance-card">
+                <span class="detail-label">STUDY CREDITS</span>
+                <strong id="balance-value">1,000</strong>
+              </div>
+            </div>
+
+            <div class="progress-track" role="progressbar" aria-label="Study progress" aria-valuemin="0" aria-valuemax="12" aria-valuenow="0">
+              <span id="progress-value"></span>
+            </div>
+
+            <div class="matchup">
+              <p class="detail-label">CURRENT MATCHUP · FICTIONAL TEAMS</p>
+              <p class="odds-note">Outside the assigned three-game streak, odds influence the simulated winner. Odds also influence score margins in all rounds. During the streak, the winner is assigned for the study.</p>
+              <div class="team-grid" id="team-options"></div>
+            </div>
+
+            <div class="wager-row" id="wager-row">
+              <label for="stake-input">
+                <span class="detail-label">YOUR STAKE</span>
+                <span class="stake-control"><input id="stake-input" type="number" min="1" step="1" inputmode="numeric"><span>credits</span></span>
+                <span class="helper-text" id="stake-help"></span>
+              </label>
+              <button class="button button-primary" id="place-bet-button" type="button" disabled>Place simulated bet <span aria-hidden="true">→</span></button>
+            </div>
+
+            <div class="round-feedback" id="round-feedback" aria-live="polite" hidden>
+              <div class="result-header">
+                <div>
+                  <p class="eyebrow" id="result-outcome">ROUND RESULT</p>
+                  <h2 id="result-heading"></h2>
+                </div>
+                <strong class="result-delta" id="result-delta"></strong>
+              </div>
+              <p id="result-copy"></p>
+              <button class="button button-secondary" id="continue-button" type="button">Continue <span aria-hidden="true">→</span></button>
+            </div>
+          </section>
+
+          <section class="complete-panel panel" id="complete" hidden>
+            <p class="eyebrow">SIMULATION COMPLETE</p>
+            <h1>Thank you<br>for taking part.</h1>
+            <p class="lede" id="completion-copy"></p>
+
+            <div class="study-details summary-details">
+              <div>
+                <span class="detail-label">BASELINE MEAN STAKE</span>
+                <strong id="baseline-summary">—</strong>
+              </div>
+              <div>
+                <span class="detail-label">FOLLOW-UP MEAN STAKE</span>
+                <strong id="follow-up-summary">—</strong>
+              </div>
+              <div>
+                <span class="detail-label">ASSIGNED OUTCOME</span>
+                <strong id="condition-summary">—</strong>
+              </div>
+            </div>
+
+            <div class="notice debrief">
+              <strong>Study explanation</strong>
+              <p>The study examines whether a short run of wins or losses is followed by a change in bet size. Your middle three outcomes were assigned to create the <span id="debrief-condition"></span> sequence; outcomes in the other rounds were simulated from the displayed odds.</p>
+            </div>
+
+            <p class="server-status" id="upload-status" role="status" aria-live="polite"></p>
+            <div class="button-row">
+              <button class="button button-secondary" id="download-button" type="button">Download my data (CSV)</button>
+              <button class="button button-primary" id="retry-upload-button" type="button" hidden>Retry data upload</button>
+            </div>
+            <button class="text-button" id="new-participant-button" type="button">Start a new participant session</button>
+          </section>
+        </div>
+
+        <aside class="league-panel panel" aria-label="League standings and completed games">
+          <div class="league-header">
+            <div>
+              <p class="eyebrow">CURRENT SESSION</p>
+              <h2>League</h2>
+            </div>
+            <span class="league-live"><span aria-hidden="true"></span> LIVE</span>
           </div>
-          <div class="balance-card">
-            <span class="detail-label">STUDY CREDITS</span>
-            <strong id="balance-value">1,000</strong>
-          </div>
-        </div>
 
-        <div class="progress-track" role="progressbar" aria-label="Study progress" aria-valuemin="0" aria-valuemax="12" aria-valuenow="0">
-          <span id="progress-value"></span>
-        </div>
+          <section class="league-section" aria-labelledby="standings-heading">
+            <div class="section-heading">
+              <h3 id="standings-heading">Standings</h3>
+              <span id="games-played">0 games</span>
+            </div>
+            <p class="league-caption">Win-loss records · this session only</p>
+            <div class="standings-scroll">
+              <table class="standings-table">
+                <thead>
+                  <tr><th scope="col">TEAM</th><th scope="col">W-L</th></tr>
+                </thead>
+                <tbody id="standings-body"></tbody>
+              </table>
+            </div>
+          </section>
 
-        <div class="matchup">
-          <p class="detail-label">TODAY'S MATCHUP · FICTIONAL TEAMS</p>
-          <p class="odds-note">Decimal odds are shown for each team. Except during the assigned outcome sequence, results are generated from the odds.</p>
-          <div class="team-grid" id="team-options"></div>
-        </div>
-
-        <div class="wager-row" id="wager-row">
-          <label for="stake-input">
-            <span class="detail-label">YOUR STAKE</span>
-            <span class="stake-control"><input id="stake-input" type="number" min="1" step="1" inputmode="numeric"><span>credits</span></span>
-            <span class="helper-text" id="stake-help"></span>
-          </label>
-          <button class="button button-primary" id="place-bet-button" type="button" disabled>Place simulated bet <span aria-hidden="true">→</span></button>
-        </div>
-
-        <div class="round-feedback" id="round-feedback" aria-live="polite" hidden>
-          <p class="eyebrow">FINAL SCORE</p>
-          <h2 id="result-heading"></h2>
-          <p id="result-copy"></p>
-          <button class="button button-secondary" id="continue-button" type="button">Continue <span aria-hidden="true">→</span></button>
-        </div>
-      </section>
-
-      <section class="complete-panel panel" id="complete" hidden>
-        <p class="eyebrow">SIMULATION COMPLETE</p>
-        <h1>Thank you<br>for taking part.</h1>
-        <p class="lede" id="completion-copy"></p>
-
-        <div class="study-details summary-details">
-          <div>
-            <span class="detail-label">BASELINE MEAN STAKE</span>
-            <strong id="baseline-summary">—</strong>
-          </div>
-          <div>
-            <span class="detail-label">FOLLOW-UP MEAN STAKE</span>
-            <strong id="follow-up-summary">—</strong>
-          </div>
-          <div>
-            <span class="detail-label">ASSIGNED OUTCOME</span>
-            <strong id="condition-summary">—</strong>
-          </div>
-        </div>
-
-        <div class="notice debrief">
-          <strong>Study explanation</strong>
-          <p>The study examines whether a short run of wins or losses is followed by a change in bet size. Your middle three outcomes were assigned to create the <span id="debrief-condition"></span> sequence; outcomes in the other rounds were simulated from the displayed odds.</p>
-        </div>
-
-        <p class="server-status" id="upload-status" role="status" aria-live="polite"></p>
-        <div class="button-row">
-          <button class="button button-secondary" id="download-button" type="button">Download my data (CSV)</button>
-          <button class="button button-primary" id="retry-upload-button" type="button" hidden>Retry data upload</button>
-        </div>
-        <button class="text-button" id="new-participant-button" type="button">Start a new participant session</button>
-      </section>
+          <section class="league-section past-games-section" aria-labelledby="past-games-heading">
+            <div class="section-heading">
+              <h3 id="past-games-heading">Completed games</h3>
+              <span class="detail-label">LATEST FIRST</span>
+            </div>
+            <ol class="game-results" id="past-games"></ol>
+            <p class="empty-games" id="empty-games">Game results will appear here after each round.</p>
+          </section>
+        </aside>
+      </div>
 
       <div class="error-message" id="error-message" role="alert" hidden></div>
     </main>

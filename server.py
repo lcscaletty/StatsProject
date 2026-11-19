@@ -55,6 +55,8 @@ CSV_COLUMNS = [
     "phase",
     "team_a",
     "team_b",
+    "team_a_score",
+    "team_b_score",
     "odds_a",
     "odds_b",
     "probability_a",
@@ -76,6 +78,8 @@ ROUND_COLUMNS = (
     "phase",
     "team_a",
     "team_b",
+    "team_a_score",
+    "team_b_score",
     "odds_a",
     "odds_b",
     "probability_a",
@@ -106,6 +110,8 @@ SCHEMA = (
         phase TEXT NOT NULL CHECK (phase IN ('baseline', 'streak', 'post')),
         team_a TEXT NOT NULL,
         team_b TEXT NOT NULL,
+        team_a_score INTEGER NOT NULL DEFAULT 0,
+        team_b_score INTEGER NOT NULL DEFAULT 0,
         odds_a DOUBLE PRECISION NOT NULL,
         odds_b DOUBLE PRECISION NOT NULL,
         probability_a DOUBLE PRECISION NOT NULL,
@@ -123,6 +129,7 @@ SCHEMA = (
     )
     """,
 )
+SCORE_COLUMNS = ("team_a_score", "team_b_score")
 
 app = FastAPI(title="Sports Betting Decisions Study API", docs_url=None, redoc_url=None)
 app.add_middleware(
@@ -140,6 +147,8 @@ class RoundRecord(BaseModel):
     phase: Literal["baseline", "streak", "post"]
     team_a: str = Field(min_length=1, max_length=48)
     team_b: str = Field(min_length=1, max_length=48)
+    team_a_score: int = Field(ge=0, le=20)
+    team_b_score: int = Field(ge=0, le=20)
     odds_a: float = Field(ge=1.3, le=3.3)
     odds_b: float = Field(ge=1.3, le=3.3)
     probability_a: float = Field(gt=0, lt=1)
@@ -180,6 +189,27 @@ def database() -> Generator[sqlite3.Connection | psycopg.Connection[dict[str, An
             connection.execute("PRAGMA foreign_keys = ON")
         for statement in SCHEMA:
             connection.execute(statement)
+        if DATABASE_URL:
+            existing_columns = {
+                row["column_name"]
+                for row in connection.execute(
+                    """
+                    SELECT column_name
+                    FROM information_schema.columns
+                    WHERE table_schema = current_schema() AND table_name = %s
+                    """,
+                    ("rounds",),
+                ).fetchall()
+            }
+        else:
+            existing_columns = {
+                row["name"] for row in connection.execute("PRAGMA table_info(rounds)")
+            }
+        for column in SCORE_COLUMNS:
+            if column not in existing_columns:
+                connection.execute(
+                    f"ALTER TABLE rounds ADD COLUMN {column} INTEGER NOT NULL DEFAULT 0"
+                )
         connection.commit()
         yield connection
         connection.commit()
@@ -218,6 +248,12 @@ def validate_submission(submission: Submission) -> None:
         expected_result = "win" if record.selection == record.winner else "loss"
         if record.bet_result != expected_result:
             raise ValueError("The recorded bet result does not match the winner and selection.")
+        if (
+            record.winner == "A" and record.team_a_score <= record.team_b_score
+        ) or (
+            record.winner == "B" and record.team_b_score <= record.team_a_score
+        ):
+            raise ValueError("The scoreline must agree with the winning team.")
         if not math.isclose(record.balance_before, previous_balance, abs_tol=0.02):
             raise ValueError("Each round's opening balance must match the previous round.")
 
@@ -310,9 +346,9 @@ def export_csv(authorization: str | None = Header(default=None)) -> StreamingRes
         rows = connection.execute(
             """
             SELECT s.participant_id, s.condition, s.submitted_at, r.round_number, r.phase,
-                   r.team_a, r.team_b, r.odds_a, r.odds_b, r.probability_a, r.selection,
-                   r.selected_odds, r.stake, r.stake_share, r.winner, r.bet_result, r.profit,
-                   r.balance_before, r.balance_after, r.forced
+                   r.team_a, r.team_b, r.team_a_score, r.team_b_score, r.odds_a, r.odds_b,
+                   r.probability_a, r.selection, r.selected_odds, r.stake, r.stake_share,
+                   r.winner, r.bet_result, r.profit, r.balance_before, r.balance_after, r.forced
             FROM rounds AS r
             JOIN submissions AS s USING (participant_id)
             ORDER BY s.submitted_at, s.participant_id, r.round_number

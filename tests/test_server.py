@@ -1,4 +1,5 @@
 import math
+import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
@@ -31,6 +32,8 @@ def build_submission(condition: str = "winning") -> server.Submission:
                 "phase": phase,
                 "team_a": sorted(server.TEAM_NAMES)[number % len(server.TEAM_NAMES)],
                 "team_b": sorted(server.TEAM_NAMES)[(number + 1) % len(server.TEAM_NAMES)],
+                "team_a_score": 3 if winner == "A" else 2,
+                "team_b_score": 3 if winner == "B" else 2,
                 "odds_a": selected_odds,
                 "odds_b": 1.9,
                 "probability_a": 0.5,
@@ -74,8 +77,12 @@ class StudyApiTests(unittest.TestCase):
         with server.database() as connection:
             participant_count = connection.execute("SELECT COUNT(*) FROM submissions").fetchone()[0]
             round_count = connection.execute("SELECT COUNT(*) FROM rounds").fetchone()[0]
+            score_count = connection.execute(
+                "SELECT COUNT(*) FROM rounds WHERE team_a_score > team_b_score OR team_b_score > team_a_score"
+            ).fetchone()[0]
         self.assertEqual(participant_count, 1)
         self.assertEqual(round_count, 12)
+        self.assertEqual(score_count, 12)
 
     def test_accepts_a_valid_losing_condition(self) -> None:
         submission = build_submission("losing")
@@ -110,9 +117,35 @@ class StudyApiTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "probability must match"):
             server.validate_submission(submission)
 
+    def test_rejects_scoreline_inconsistent_with_winner(self) -> None:
+        submission = build_submission()
+        submission.rounds[0].team_a_score = 1
+        submission.rounds[0].team_b_score = 2
+
+        with self.assertRaisesRegex(ValueError, "scoreline must agree"):
+            server.validate_submission(submission)
+
+    def test_migrates_existing_database_with_score_columns(self) -> None:
+        connection = sqlite3.connect(self.database_path)
+        try:
+            connection.execute("CREATE TABLE rounds (round_number INTEGER)")
+        finally:
+            connection.close()
+
+        with server.database() as connection:
+            columns = {
+                row["name"] for row in connection.execute("PRAGMA table_info(rounds)")
+            }
+
+        self.assertIn("team_a_score", columns)
+        self.assertIn("team_b_score", columns)
+
     def test_postgres_backend_uses_postgres_parameters(self) -> None:
         connection = MagicMock()
-        connection.execute.return_value = SimpleNamespace(rowcount=1)
+        connection.execute.return_value = SimpleNamespace(
+            rowcount=1,
+            fetchall=lambda: [],
+        )
         cursor = connection.cursor.return_value
         connect = MagicMock(return_value=connection)
         submission = build_submission()
@@ -136,6 +169,11 @@ class StudyApiTests(unittest.TestCase):
         self.assertIn("%s", rounds_insert.args[0])
         self.assertEqual(len(rounds_insert.args[1]), 12)
         cursor.close.assert_called_once_with()
+        migrations = [
+            call for call in connection.execute.call_args_list
+            if call.args[0].startswith("ALTER TABLE rounds ADD COLUMN")
+        ]
+        self.assertEqual(len(migrations), 2)
 
 
 if __name__ == "__main__":

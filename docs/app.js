@@ -10,6 +10,8 @@ const CSV_COLUMNS = [
   "phase",
   "team_a",
   "team_b",
+  "team_a_score",
+  "team_b_score",
   "odds_a",
   "odds_b",
   "probability_a",
@@ -41,6 +43,7 @@ const TEAMS = [
 
 const apiBaseUrl = (window.STUDY_CONFIG?.apiBaseUrl ?? "").replace(/\/+$/, "");
 const intro = document.querySelector("#intro");
+const studyLayout = document.querySelector("#study-layout");
 const gamePanel = document.querySelector("#game");
 const completePanel = document.querySelector("#complete");
 const consentInput = document.querySelector("#consent");
@@ -74,7 +77,32 @@ function isLoopbackHost(hostname) {
 function loadSession() {
   try {
     const saved = sessionStorage.getItem(SESSION_KEY);
-    return saved ? JSON.parse(saved) : null;
+    if (!saved) {
+      return null;
+    }
+
+    const restored = JSON.parse(saved);
+    let updated = false;
+    for (const round of restored.rounds ?? []) {
+      if (!Number.isInteger(round.team_a_score) || !Number.isInteger(round.team_b_score)) {
+        Object.assign(round, createScoreline(round.probability_a, round.winner));
+        updated = true;
+      }
+    }
+    if (restored.last_result && !Number.isInteger(restored.last_result.team_a_score)) {
+      const savedRound = restored.rounds.find(
+        (round) => round.round_number === restored.last_result.round_number
+      );
+      if (savedRound) {
+        restored.last_result.team_a_score = savedRound.team_a_score;
+        restored.last_result.team_b_score = savedRound.team_b_score;
+        updated = true;
+      }
+    }
+    if (updated) {
+      sessionStorage.setItem(SESSION_KEY, JSON.stringify(restored));
+    }
+    return restored;
   } catch (error) {
     showError(`This browser could not restore the saved study session: ${error.message}`);
     return null;
@@ -117,6 +145,19 @@ function createEvent() {
 
 function round2(value) {
   return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+function createScoreline(probabilityA, winner) {
+  const winnerProbability = winner === "A" ? probabilityA : 1 - probabilityA;
+  const confidence = Math.min(1, Math.max(0, (winnerProbability - 0.5) / 0.2));
+  const maxMargin = 1 + Math.round(confidence * 3);
+  const margin = 1 + Math.floor(Math.random() * maxMargin);
+  const lowerScore = Math.floor(Math.random() * 6);
+  const higherScore = lowerScore + margin;
+
+  return winner === "A"
+    ? { team_a_score: higherScore, team_b_score: lowerScore }
+    : { team_a_score: lowerScore, team_b_score: higherScore };
 }
 
 function createSession() {
@@ -207,6 +248,7 @@ function updateBeginButton() {
 
 function render() {
   intro.hidden = Boolean(state);
+  studyLayout.hidden = !state;
   gamePanel.hidden = !state || state.finished;
   completePanel.hidden = !state || !state.finished;
 
@@ -215,10 +257,12 @@ function render() {
     return;
   }
   if (state.finished) {
+    renderLeague();
     renderCompletion();
     return;
   }
   renderRound();
+  renderLeague();
 }
 
 function renderRound() {
@@ -332,6 +376,7 @@ function placeBet() {
 
   const betResult = winner === state.selected_team ? "win" : "loss";
   const selectedOdds = state.selected_team === "A" ? event.odds_a : event.odds_b;
+  const scoreline = createScoreline(event.probability_a, winner);
   const profit = round2(betResult === "win" ? stake * (selectedOdds - 1) : -stake);
   const balanceAfter = round2(balanceBefore + profit);
 
@@ -340,6 +385,7 @@ function placeBet() {
     phase,
     team_a: event.team_a,
     team_b: event.team_b,
+    ...scoreline,
     odds_a: event.odds_a,
     odds_b: event.odds_b,
     probability_a: event.probability_a,
@@ -374,10 +420,106 @@ function renderLastResult() {
   const result = state.last_result;
   const winnerName = result.winner === "A" ? result.team_a : result.team_b;
   const won = result.bet_result === "win";
-  document.querySelector("#result-heading").textContent = `Winner: ${winnerName}`;
-  document.querySelector("#result-copy").textContent = won
-    ? `Your bet won ${formatCredits(result.profit)} credits. Your balance is now ${formatCredits(result.balance_after)}.`
-    : `Your bet lost ${formatCredits(result.stake)} credits. Your balance is now ${formatCredits(result.balance_after)}.`;
+  const feedback = document.querySelector("#round-feedback");
+  feedback.classList.toggle("is-loss", !won);
+  feedback.classList.toggle("is-win", won);
+  document.querySelector("#result-outcome").textContent = won ? "BET WON" : "BET LOST";
+  document.querySelector("#result-heading").textContent = won ? "Your bet won" : "Your bet lost";
+  document.querySelector("#result-delta").textContent = won
+    ? `+${formatCredits(result.profit)} credits`
+    : `-${formatCredits(result.stake)} credits`;
+  document.querySelector("#result-copy").textContent =
+    `Final score: ${result.team_a} ${result.team_a_score}-${result.team_b_score} ${result.team_b}. Your balance is now ${formatCredits(result.balance_after)} credits.`;
+}
+
+function renderLeague() {
+  const standings = new Map(
+    TEAMS.map((team) => [team, { team, wins: 0, losses: 0 }])
+  );
+  for (const round of state.rounds) {
+    const winnerTeam = round.winner === "A" ? round.team_a : round.team_b;
+    const loserTeam = round.winner === "A" ? round.team_b : round.team_a;
+    standings.get(winnerTeam).wins += 1;
+    standings.get(loserTeam).losses += 1;
+  }
+
+  const orderedStandings = [...standings.values()].sort((first, second) => {
+    const firstGames = first.wins + first.losses;
+    const secondGames = second.wins + second.losses;
+    const firstRate = firstGames ? first.wins / firstGames : 0;
+    const secondRate = secondGames ? second.wins / secondGames : 0;
+    return secondRate - firstRate || second.wins - first.wins || first.team.localeCompare(second.team);
+  });
+
+  const currentTeams = new Set(
+    state.current_event ? [state.current_event.team_a, state.current_event.team_b] : []
+  );
+  const standingsBody = document.querySelector("#standings-body");
+  standingsBody.replaceChildren();
+  for (const record of orderedStandings) {
+    const row = document.createElement("tr");
+    const games = record.wins + record.losses;
+    if (games) {
+      row.classList.add("is-played");
+    }
+    if (currentTeams.has(record.team)) {
+      row.classList.add("is-current");
+    }
+
+    const teamCell = document.createElement("td");
+    teamCell.textContent = record.team;
+    const recordCell = document.createElement("td");
+    recordCell.textContent = `${record.wins}-${record.losses}`;
+    row.append(teamCell, recordCell);
+    standingsBody.append(row);
+  }
+
+  const gamesPlayed = document.querySelector("#games-played");
+  gamesPlayed.textContent = `${state.rounds.length} ${state.rounds.length === 1 ? "game" : "games"}`;
+
+  const gameResults = document.querySelector("#past-games");
+  gameResults.replaceChildren();
+  document.querySelector("#empty-games").hidden = state.rounds.length > 0;
+  for (const round of [...state.rounds].reverse()) {
+    const item = document.createElement("li");
+    item.className = `game-result is-${round.bet_result}`;
+
+    const heading = document.createElement("div");
+    heading.className = "game-result-topline";
+    const roundLabel = document.createElement("span");
+    roundLabel.textContent = `ROUND ${String(round.round_number).padStart(2, "0")}`;
+    const betOutcome = document.createElement("span");
+    betOutcome.className = "bet-outcome";
+    betOutcome.textContent = round.bet_result === "win" ? "BET WON" : "BET LOST";
+    heading.append(roundLabel, betOutcome);
+
+    const scoreline = document.createElement("div");
+    scoreline.className = "game-result-scoreline";
+    const teamA = document.createElement("span");
+    teamA.className = `game-result-team${round.winner === "A" ? " is-winner" : ""}`;
+    const teamAName = document.createElement("span");
+    teamAName.textContent = round.team_a;
+    const teamAScore = document.createElement("strong");
+    teamAScore.className = "game-result-score";
+    teamAScore.textContent = String(round.team_a_score);
+    teamA.append(teamAName, teamAScore);
+
+    const teamB = document.createElement("span");
+    teamB.className = `game-result-team${round.winner === "B" ? " is-winner" : ""}`;
+    const teamBName = document.createElement("span");
+    teamBName.textContent = round.team_b;
+    const teamBScore = document.createElement("strong");
+    teamBScore.className = "game-result-score";
+    teamBScore.textContent = String(round.team_b_score);
+    teamB.append(teamBName, teamBScore);
+
+    const separator = document.createElement("span");
+    separator.className = "score-separator";
+    separator.textContent = "-";
+    scoreline.append(teamA, separator, teamB);
+    item.append(heading, scoreline);
+    gameResults.append(item);
+  }
 }
 
 function continueSimulation() {
