@@ -156,12 +156,34 @@ function loadSession() {
         updated = true;
       }
     }
+    const previousBetTeam = lastBetTeam(restored.rounds);
     if (!restored.current_week && restored.current_event && !restored.finished) {
-      restored.current_week = createWeek(restored.rounds.length + 1, restored.current_event);
+      const repeatsPreviousBet = [restored.current_event.team_a, restored.current_event.team_b]
+        .includes(previousBetTeam);
+      restored.current_week = createWeek(
+        restored.rounds.length + 1,
+        repeatsPreviousBet ? null : restored.current_event,
+        previousBetTeam
+      );
+      if (repeatsPreviousBet) {
+        restored.selected_team = null;
+      }
       updated = true;
-    } else if (restored.current_week && !restored.last_result) {
-      restored.current_event =
-        restored.current_week.games[restored.current_week.featured_index] ?? null;
+    } else if (restored.current_week && !restored.last_result && !restored.finished) {
+      const nextFeaturedIndex = featuredIndexWithoutTeam(
+        restored.current_week.games,
+        restored.current_week.featured_index,
+        previousBetTeam
+      );
+      if (nextFeaturedIndex !== restored.current_week.featured_index) {
+        restored.current_week.featured_index = nextFeaturedIndex;
+        restored.current_week.games.forEach((game, index) => {
+          game.featured = index === nextFeaturedIndex;
+        });
+        restored.selected_team = null;
+        updated = true;
+      }
+      restored.current_event = restored.current_week.games[nextFeaturedIndex] ?? null;
     }
     if (updated) {
       sessionStorage.setItem(SESSION_KEY, JSON.stringify(restored));
@@ -197,9 +219,33 @@ function createEvent(teamA, teamB) {
   };
 }
 
-function createWeek(weekNumber, preservedEvent = null) {
+function featuredIndexWithoutTeam(games, preferredIndex, excludedTeam) {
+  if (!excludedTeam) {
+    return preferredIndex;
+  }
+  for (let offset = 0; offset < games.length; offset += 1) {
+    const index = (preferredIndex + offset) % games.length;
+    const game = games[index];
+    if (game.team_a !== excludedTeam && game.team_b !== excludedTeam) {
+      return index;
+    }
+  }
+  return preferredIndex;
+}
+
+function createWeek(weekNumber, preservedEvent = null, excludedTeam = null) {
   let fixtures = WEEKLY_SCHEDULE[weekNumber - 1].map((fixture) => ({ ...fixture }));
-  let featuredIndex = (weekNumber - 1) % fixtures.length;
+  if (
+    preservedEvent &&
+    [preservedEvent.team_a, preservedEvent.team_b].includes(excludedTeam)
+  ) {
+    preservedEvent = null;
+  }
+  let featuredIndex = featuredIndexWithoutTeam(
+    fixtures,
+    (weekNumber - 1) % fixtures.length,
+    excludedTeam
+  );
 
   if (preservedEvent) {
     const matchingFixture = fixtures.findIndex(
@@ -278,6 +324,20 @@ function gameRecordForRound(round) {
     featured: true,
     bet_result: round.bet_result
   };
+}
+
+function lastBetTeam(rounds) {
+  const previousRound = rounds[rounds.length - 1];
+  if (!previousRound) {
+    return null;
+  }
+  if (previousRound.selection === "A") {
+    return previousRound.team_a;
+  }
+  if (previousRound.selection === "B") {
+    return previousRound.team_b;
+  }
+  return null;
 }
 
 function createSession() {
@@ -409,7 +469,7 @@ function renderRound() {
   }
 
   if (!state.current_week || state.current_week.week !== roundNumber) {
-    state.current_week = createWeek(roundNumber);
+    state.current_week = createWeek(roundNumber, null, lastBetTeam(state.rounds));
     state.current_event = state.current_week.games[state.current_week.featured_index];
     state.selected_team = null;
     saveSession();
@@ -417,6 +477,10 @@ function renderRound() {
     state.current_event =
       state.current_week.games[state.current_week.featured_index] ?? null;
   }
+  const previousBet = lastBetTeam(state.rounds);
+  document.querySelector("#odds-note").textContent = previousBet
+    ? `You backed ${previousBet} last week, so this week's featured matchup offers two different teams. The other five games also affect the league standings.`
+    : "Make one pick from the featured matchup. Five other games are also played this week and count toward the league standings.";
   renderTeamOptions();
 
   const maxStake = Math.min(MAX_STAKE, Math.floor(state.balance));
