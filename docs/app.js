@@ -386,11 +386,10 @@ function renderRound() {
   }
   renderTeamOptions();
 
-  const maxStake = Math.floor(state.balance * 0.1);
   const stakeInput = document.querySelector("#stake-input");
-  stakeInput.max = String(maxStake);
-  stakeInput.value = String(Math.min(25, maxStake));
-  document.querySelector("#stake-help").textContent = `Choose 1 to ${formatCredits(maxStake)} credits (maximum 10% of your current balance).`;
+  stakeInput.value = "25";
+  document.querySelector("#stake-help").textContent =
+    "Enter any positive whole-credit amount. Wagers can exceed your balance.";
   stakeInput.oninput = updateBetButton;
   updateBetButton();
 }
@@ -436,12 +435,10 @@ function renderTeamOptions() {
 function updateBetButton() {
   const stakeInput = document.querySelector("#stake-input");
   const stake = Number(stakeInput.value);
-  const maxStake = Math.floor(state.balance * 0.1);
   document.querySelector("#place-bet-button").disabled =
     !state.selected_team ||
-    !Number.isInteger(stake) ||
-    stake < 1 ||
-    stake > maxStake;
+    !Number.isSafeInteger(stake) ||
+    stake < 1;
 }
 
 function placeBet() {
@@ -451,10 +448,9 @@ function placeBet() {
   const event = state.current_event;
   const stake = Number(document.querySelector("#stake-input").value);
   const balanceBefore = round2(state.balance);
-  const maxStake = Math.floor(balanceBefore * 0.1);
 
-  if (!event || !["A", "B"].includes(state.selected_team) || !Number.isInteger(stake) || stake < 1 || stake > maxStake) {
-    showError("Choose a team and a whole-number stake within the displayed limit.");
+  if (!event || !["A", "B"].includes(state.selected_team) || !Number.isSafeInteger(stake) || stake < 1) {
+    showError("Choose a team and enter a positive whole-credit stake.");
     return;
   }
 
@@ -509,7 +505,7 @@ function placeBet() {
     selection: state.selected_team,
     selected_odds: selectedOdds,
     stake,
-    stake_share: stake / balanceBefore,
+    stake_share: stake / Math.max(Math.abs(balanceBefore), 1),
     winner,
     bet_result: betResult,
     profit,
@@ -693,7 +689,7 @@ function continueSimulation() {
 function meanStakeShare(phase) {
   const rows = state.rounds.filter((round) => round.phase === phase);
   const mean = rows.reduce((total, round) => total + round.stake_share, 0) / rows.length;
-  return `${(mean * 100).toFixed(1)}% of balance`;
+  return `${(mean * 100).toFixed(1)}% of balance magnitude`;
 }
 
 function renderCompletion() {

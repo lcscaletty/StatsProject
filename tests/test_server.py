@@ -11,12 +11,15 @@ from uuid import uuid4
 import server
 
 
-def build_submission(condition: str = "winning") -> server.Submission:
+def build_submission(
+    condition: str = "winning",
+    stake_override: int | None = None,
+) -> server.Submission:
     balance = 1000.0
     rounds = []
     phases = ["baseline"] * 4 + ["streak"] * 4 + ["post"] * 4
     for number, phase in enumerate(phases, start=1):
-        stake = float(math.floor(balance * 0.1))
+        stake = stake_override if stake_override is not None else math.floor(balance * 0.1)
         forced = phase == "streak"
         selection = "A"
         if forced:
@@ -40,7 +43,7 @@ def build_submission(condition: str = "winning") -> server.Submission:
             "selection": selection,
             "selected_odds": selected_odds,
             "stake": stake,
-            "stake_share": stake / balance,
+            "stake_share": stake / max(abs(balance), 1),
             "winner": winner,
             "bet_result": result,
             "profit": profit,
@@ -130,6 +133,12 @@ class StudyApiTests(unittest.TestCase):
 
         self.assertTrue(server.save_submission(submission))
         self.assertTrue(all(record.bet_result == "loss" for record in submission.rounds[4:8]))
+
+    def test_accepts_unlimited_stakes_and_negative_balances(self) -> None:
+        submission = build_submission("losing", stake_override=50000)
+
+        self.assertTrue(server.save_submission(submission))
+        self.assertTrue(any(record.balance_after < 0 for record in submission.rounds))
 
     def test_rejects_weekly_slate_with_a_repeated_team(self) -> None:
         submission = build_submission()

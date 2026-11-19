@@ -178,13 +178,13 @@ class RoundRecord(BaseModel):
     probability_a: float = Field(gt=0, lt=1)
     selection: Literal["A", "B"]
     selected_odds: float = Field(gt=1, le=10)
-    stake: int = Field(ge=1, le=10000)
-    stake_share: float = Field(gt=0, le=0.1)
+    stake: int = Field(ge=1)
+    stake_share: float = Field(gt=0)
     winner: Literal["A", "B"]
     bet_result: Literal["win", "loss"]
-    profit: float = Field(ge=-10000, le=10000)
-    balance_before: float = Field(ge=0, le=100000)
-    balance_after: float = Field(ge=0, le=12000)
+    profit: float
+    balance_before: float
+    balance_after: float
     forced: bool
 
 
@@ -253,7 +253,7 @@ def validate_submission(submission: Submission) -> None:
 
         expected_forced = expected_phase == "streak"
         if record.forced != expected_forced:
-            raise ValueError("Only the three outcome-sequence rounds may be assigned.")
+            raise ValueError("Only the four outcome-sequence rounds may be assigned.")
         if expected_forced:
             expected_result = "win" if submission.condition == "winning" else "loss"
             if record.bet_result != expected_result:
@@ -332,10 +332,7 @@ def validate_submission(submission: Submission) -> None:
         if not math.isclose(record.balance_before, previous_balance, abs_tol=0.02):
             raise ValueError("Each round's opening balance must match the previous round.")
 
-        max_stake = math.floor(record.balance_before * 0.1 + 1e-8)
-        if record.stake > max_stake:
-            raise ValueError("Stake exceeds the 10% balance limit.")
-        expected_share = record.stake / record.balance_before
+        expected_share = record.stake / max(abs(record.balance_before), 1)
         if not math.isclose(record.stake_share, expected_share, abs_tol=0.001):
             raise ValueError("Recorded stake share does not match the balance and stake.")
 

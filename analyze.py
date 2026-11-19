@@ -47,8 +47,10 @@ def load_participant_summaries(paths: list[Path]) -> list[dict[str, str | float]
                     stake_share = float(row["stake_share"])
                 except (TypeError, ValueError) as error:
                     raise ValueError(f"{path}:{line_number} has an invalid stake share.") from error
-                if not math.isfinite(stake_share) or not 0 < stake_share <= 0.1:
-                    raise ValueError(f"{path}:{line_number} has a stake share outside (0, 0.1].")
+                if not math.isfinite(stake_share) or stake_share <= 0:
+                    raise ValueError(
+                        f"{path}:{line_number} has a non-positive or non-finite stake share."
+                    )
                 participant[phase].append(stake_share)
 
     summaries = []

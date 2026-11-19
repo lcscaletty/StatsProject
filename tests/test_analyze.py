@@ -20,7 +20,7 @@ class AnalysisTests(unittest.TestCase):
                 )
                 writer.writeheader()
                 for participant_id, condition, baseline_share, follow_up_share in [
-                    ("p1", "winning", 0.02, 0.04),
+                    ("p1", "winning", 0.2, 0.22),
                     ("p2", "losing", 0.04, 0.02),
                 ]:
                     for _ in range(4):
