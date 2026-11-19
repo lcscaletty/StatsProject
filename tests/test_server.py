@@ -113,6 +113,7 @@ class StudyApiTests(unittest.TestCase):
     def test_postgres_backend_uses_postgres_parameters(self) -> None:
         connection = MagicMock()
         connection.execute.return_value = SimpleNamespace(rowcount=1)
+        cursor = connection.cursor.return_value
         connect = MagicMock(return_value=connection)
         submission = build_submission()
 
@@ -131,9 +132,10 @@ class StudyApiTests(unittest.TestCase):
             if call.args[0].lstrip().startswith("INSERT INTO submissions")
         )
         self.assertIn("%s", submission_insert.args[0])
-        rounds_insert = connection.executemany.call_args
+        rounds_insert = cursor.executemany.call_args
         self.assertIn("%s", rounds_insert.args[0])
         self.assertEqual(len(rounds_insert.args[1]), 12)
+        cursor.close.assert_called_once_with()
 
 
 if __name__ == "__main__":

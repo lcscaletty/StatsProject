@@ -271,10 +271,14 @@ def save_submission(submission: Submission) -> bool:
                     int(values["forced"]),
                 )
             )
-        connection.executemany(
-            f"INSERT INTO rounds ({', '.join(ROUND_COLUMNS)}) VALUES ({round_placeholders})",
-            round_values,
-        )
+        cursor = connection.cursor()
+        try:
+            cursor.executemany(
+                f"INSERT INTO rounds ({', '.join(ROUND_COLUMNS)}) VALUES ({round_placeholders})",
+                round_values,
+            )
+        finally:
+            cursor.close()
     return True
 
 
