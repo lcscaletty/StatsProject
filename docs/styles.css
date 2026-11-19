@@ -306,9 +306,31 @@ input:focus-visible {
   color: #bac7cd;
 }
 
-.balance-card strong {
+.account-metrics,
+.account-metric {
+  display: grid;
+}
+
+.account-metrics {
+  gap: 8px;
+}
+
+.account-metric {
+  gap: 3px;
+}
+
+.account-metric strong {
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+}
+
+.account-metric strong.is-debt {
+  color: #ff8b82;
+}
+
+.balance-card .account-metric strong {
   font-family: "Segoe UI", Arial, sans-serif;
-  font-size: 22px;
+  font-size: 16px;
 }
 
 .progress-track {
@@ -403,6 +425,29 @@ input:focus-visible {
   margin-top: 24px;
   padding-top: 22px;
   border-top: 1px solid var(--line);
+}
+
+.loan-prompt {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin-top: 24px;
+  padding: 18px 20px;
+  border: 1px solid #e8ded3;
+  border-left: 3px solid var(--orange);
+  background: #faf8f5;
+}
+
+.loan-prompt .eyebrow {
+  margin-bottom: 6px;
+}
+
+.loan-prompt p:not(.eyebrow) {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .wager-row label {
@@ -919,6 +964,11 @@ footer {
   }
 
   .wager-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .loan-prompt {
     align-items: stretch;
     flex-direction: column;
   }

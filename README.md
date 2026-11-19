@@ -12,7 +12,7 @@ Each participant makes one featured-game bet per week across a 12-week fictional
 
 All 12 teams play once each week: the first 11 weeks form a round robin, followed by a rematch week. Each week has six games; one rotating featured game is available to bet on, while the other five games also affect the session standings. Featured outcomes outside weeks 5–8 and all non-featured outcomes are simulated using displayed odds.
 
-Participants are independently assigned at random to one of two conditions in their browser. The starting balance is 1,000 credits; stakes are positive whole-credit amounts with no cap, so they may exceed the current balance and produce debt in study credits. Decimal odds are shown for both teams. Stake share is measured against the absolute opening balance (using one credit as the denominator at zero); the study also records the bet, odds, result, phase, balance, and all six weekly scorelines.
+Participants are independently assigned at random to one of two conditions in their browser. They start with 1,000 available credits and may stake up to 500 credits per week, but never more than their available balance. If their available balance drops below one credit, they may take another 1,000-credit loan. Each loan increases both available credits and outstanding debt; loans are not automatically repaid during the simulation. The net position (available credits minus outstanding debt) can therefore become negative, even though a wager cannot exceed available credits. Decimal odds are shown for both teams. Stake share is measured against the available balance before the wager; the study also records loans and debt along with each bet, odds, result, phase, balance, and all six weekly scorelines.
 
 Before participation, users are told that some details about result determination will be explained after the simulation. The assigned featured-game sequence is explained in the end-of-study debrief. Obtain any required ethics/IRB approval, and add your approved researcher contact, consent, privacy, withdrawal, and data-retention details before recruiting participants.
 
@@ -54,7 +54,7 @@ Install the analysis dependency with `python -m pip install -r requirements-anal
 python analyze.py study-data.csv --summary-output participant-summary.csv
 ```
 
-The script computes each participant's mean stake as a proportion of their balance magnitude during baseline and follow-up, then compares the within-participant change between conditions with a two-sided Welch t-test. It also writes one row per participant to the summary CSV. Treat the test as an initial descriptive analysis; choose and preregister the final statistical model and exclusions with your research advisor.
+The script computes each participant's mean stake as a proportion of available balance during baseline and follow-up, then compares the within-participant change between conditions with a two-sided Welch t-test. It also writes one row per participant to the summary CSV. Treat the test as an initial descriptive analysis; choose and preregister the final statistical model and exclusions with your research advisor.
 
 ## Public deployment
 

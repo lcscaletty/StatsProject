@@ -13,23 +13,31 @@ import server
 
 def build_submission(
     condition: str = "winning",
-    stake_override: int | None = None,
+    force_losses: bool = False,
 ) -> server.Submission:
     balance = 1000.0
+    debt = 0.0
     rounds = []
     phases = ["baseline"] * 4 + ["streak"] * 4 + ["post"] * 4
     for number, phase in enumerate(phases, start=1):
-        stake = stake_override if stake_override is not None else math.floor(balance * 0.1)
+        loan_amount = server.LOAN_AMOUNT if math.floor(balance + 1e-8) < 1 else 0
+        debt_before = debt
+        balance_before = balance + loan_amount
+        debt_after = debt + loan_amount
+        stake_share_factor = 1 if force_losses else 0.1
+        stake = min(server.MAX_STAKE, math.floor(balance_before * stake_share_factor))
         forced = phase == "streak"
         selection = "A"
         if forced:
             winner = selection if condition == "winning" else "B"
+        elif force_losses:
+            winner = "B"
         else:
             winner = "A" if number % 2 else "B"
         result = "win" if winner == selection else "loss"
         selected_odds = 1.9
         profit = round(stake * (selected_odds - 1), 2) if result == "win" else -stake
-        after = round(balance + profit, 2)
+        after = round(balance_before + profit, 2)
         round_record = {
             "round_number": number,
             "phase": phase,
@@ -43,12 +51,15 @@ def build_submission(
             "selection": selection,
             "selected_odds": selected_odds,
             "stake": stake,
-            "stake_share": stake / max(abs(balance), 1),
+            "stake_share": stake / max(balance_before, 1),
             "winner": winner,
             "bet_result": result,
             "profit": profit,
-            "balance_before": balance,
+            "balance_before": balance_before,
             "balance_after": after,
+            "debt_before": debt_before,
+            "debt_after": debt_after,
+            "loan_amount": loan_amount,
             "forced": forced,
         }
         round_record["week_games"] = [
@@ -90,6 +101,7 @@ def build_submission(
             )
         rounds.append(round_record)
         balance = after
+        debt = debt_after
     return server.Submission(
         participant_id=uuid4(),
         condition=condition,
@@ -134,11 +146,32 @@ class StudyApiTests(unittest.TestCase):
         self.assertTrue(server.save_submission(submission))
         self.assertTrue(all(record.bet_result == "loss" for record in submission.rounds[4:8]))
 
-    def test_accepts_unlimited_stakes_and_negative_balances(self) -> None:
-        submission = build_submission("losing", stake_override=50000)
+    def test_accepts_repeated_loans_and_tracks_negative_net_position(self) -> None:
+        submission = build_submission("losing", force_losses=True)
 
         self.assertTrue(server.save_submission(submission))
-        self.assertTrue(any(record.balance_after < 0 for record in submission.rounds))
+        loans = [record for record in submission.rounds if record.loan_amount]
+        self.assertGreater(len(loans), 1)
+        self.assertTrue(any(record.balance_after - record.debt_after < 0 for record in loans))
+
+    def test_rejects_a_stake_over_the_round_limit(self) -> None:
+        submission = build_submission()
+        record = submission.rounds[0]
+        record.stake = server.MAX_STAKE + 1
+        record.stake_share = record.stake / record.balance_before
+
+        with self.assertRaisesRegex(ValueError, "500-credit limit"):
+            server.validate_submission(submission)
+
+    def test_rejects_a_wager_without_available_credits_or_a_loan(self) -> None:
+        submission = build_submission("losing", force_losses=True)
+        record = next(round_record for round_record in submission.rounds if round_record.loan_amount)
+        record.loan_amount = 0
+        record.balance_before = 0
+        record.debt_after = record.debt_before
+
+        with self.assertRaisesRegex(ValueError, "available balance"):
+            server.validate_submission(submission)
 
     def test_rejects_weekly_slate_with_a_repeated_team(self) -> None:
         submission = build_submission()
@@ -243,7 +276,7 @@ class StudyApiTests(unittest.TestCase):
             call for call in connection.execute.call_args_list
             if call.args[0].startswith("ALTER TABLE rounds ADD COLUMN")
         ]
-        self.assertEqual(len(migrations), 3)
+        self.assertEqual(len(migrations), 6)
 
 
 if __name__ == "__main__":

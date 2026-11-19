@@ -1,6 +1,8 @@
 "use strict";
 
 const STARTING_CREDITS = 1000;
+const MAX_STAKE = 500;
+const LOAN_CREDITS = 1000;
 const TOTAL_ROUNDS = 12;
 const SESSION_KEY = "field-notes-study-session-v1";
 const CSV_COLUMNS = [
@@ -25,6 +27,9 @@ const CSV_COLUMNS = [
   "profit",
   "balance_before",
   "balance_after",
+  "debt_before",
+  "debt_after",
+  "loan_amount",
   "forced"
 ];
 const TEAMS = [
@@ -111,6 +116,14 @@ function loadSession() {
 
     const restored = JSON.parse(saved);
     let updated = false;
+    if (!Number.isFinite(restored.debt) || restored.debt < 0) {
+      restored.debt = 0;
+      updated = true;
+    }
+    if (![0, LOAN_CREDITS].includes(restored.current_loan)) {
+      restored.current_loan = 0;
+      updated = true;
+    }
     for (const round of restored.rounds ?? []) {
       if (!Number.isInteger(round.team_a_score) || !Number.isInteger(round.team_b_score)) {
         Object.assign(round, createScoreline(round.probability_a, round.winner));
@@ -118,6 +131,18 @@ function loadSession() {
       }
       if (!Array.isArray(round.week_games)) {
         round.week_games = [gameRecordForRound(round)];
+        updated = true;
+      }
+      if (!Number.isFinite(round.debt_before)) {
+        round.debt_before = 0;
+        updated = true;
+      }
+      if (!Number.isFinite(round.debt_after)) {
+        round.debt_after = 0;
+        updated = true;
+      }
+      if (!Number.isInteger(round.loan_amount)) {
+        round.loan_amount = 0;
         updated = true;
       }
     }
@@ -260,6 +285,8 @@ function createSession() {
     participant_id: crypto.randomUUID(),
     condition: Math.random() < 0.5 ? "winning" : "losing",
     balance: STARTING_CREDITS,
+    debt: 0,
+    current_loan: 0,
     rounds: [],
     current_event: null,
     current_week: null,
@@ -364,11 +391,17 @@ function renderRound() {
   document.querySelector("#phase-label").textContent = phaseLabel(roundNumber);
   document.querySelector("#round-heading").textContent = `Week ${roundNumber} of ${TOTAL_ROUNDS}`;
   document.querySelector("#balance-value").textContent = formatCredits(state.balance);
+  document.querySelector("#debt-value").textContent = formatCredits(state.debt);
+  const netValue = document.querySelector("#net-value");
+  const netPosition = round2(state.balance - state.debt);
+  netValue.textContent = formatCredits(netPosition);
+  netValue.classList.toggle("is-debt", netPosition < 0);
   document.querySelector("#progress-value").style.width = `${progress}%`;
   progressBar.setAttribute("aria-valuenow", String(state.rounds.length));
 
   const isShowingResult = Boolean(state.last_result);
   document.querySelector("#wager-row").hidden = isShowingResult;
+  document.querySelector("#loan-prompt").hidden = true;
   document.querySelector("#round-feedback").hidden = !isShowingResult;
   if (isShowingResult) {
     renderLastResult();
@@ -386,10 +419,20 @@ function renderRound() {
   }
   renderTeamOptions();
 
+  const maxStake = Math.min(MAX_STAKE, Math.floor(state.balance));
+  const wagerRow = document.querySelector("#wager-row");
+  const loanPrompt = document.querySelector("#loan-prompt");
+  wagerRow.hidden = maxStake < 1;
+  loanPrompt.hidden = maxStake >= 1;
+  if (maxStake < 1) {
+    return;
+  }
+
   const stakeInput = document.querySelector("#stake-input");
+  stakeInput.max = String(maxStake);
   stakeInput.value = "25";
   document.querySelector("#stake-help").textContent =
-    "Enter any positive whole-credit amount. Wagers can exceed your balance.";
+    `Choose 1 to ${formatCredits(maxStake)} credits (max 500 and no more than available credits).`;
   stakeInput.oninput = updateBetButton;
   updateBetButton();
 }
@@ -435,10 +478,12 @@ function renderTeamOptions() {
 function updateBetButton() {
   const stakeInput = document.querySelector("#stake-input");
   const stake = Number(stakeInput.value);
+  const maxStake = Math.min(MAX_STAKE, Math.floor(state.balance));
   document.querySelector("#place-bet-button").disabled =
     !state.selected_team ||
     !Number.isSafeInteger(stake) ||
-    stake < 1;
+    stake < 1 ||
+    stake > maxStake;
 }
 
 function placeBet() {
@@ -448,9 +493,10 @@ function placeBet() {
   const event = state.current_event;
   const stake = Number(document.querySelector("#stake-input").value);
   const balanceBefore = round2(state.balance);
+  const maxStake = Math.min(MAX_STAKE, Math.floor(balanceBefore));
 
-  if (!event || !["A", "B"].includes(state.selected_team) || !Number.isSafeInteger(stake) || stake < 1) {
-    showError("Choose a team and enter a positive whole-credit stake.");
+  if (!event || !["A", "B"].includes(state.selected_team) || !Number.isSafeInteger(stake) || stake < 1 || stake > maxStake) {
+    showError("Choose a team and a whole-credit stake within your available credits and the 500-credit round limit.");
     return;
   }
 
@@ -505,17 +551,21 @@ function placeBet() {
     selection: state.selected_team,
     selected_odds: selectedOdds,
     stake,
-    stake_share: stake / Math.max(Math.abs(balanceBefore), 1),
+    stake_share: stake / Math.max(balanceBefore, 1),
     winner,
     bet_result: betResult,
     profit,
     balance_before: balanceBefore,
     balance_after: balanceAfter,
+    debt_before: state.debt - state.current_loan,
+    debt_after: state.debt,
+    loan_amount: state.current_loan,
     forced
   };
 
   state.rounds.push(record);
   state.balance = balanceAfter;
+  state.current_loan = 0;
   state.current_event = null;
   state.selected_team = null;
   state.last_result = record;
@@ -681,7 +731,19 @@ function continueSimulation() {
   state.last_result = null;
   state.current_event = null;
   state.current_week = null;
+  state.current_loan = 0;
   state.selected_team = null;
+  saveSession();
+  render();
+}
+
+function takeLoan() {
+  if (!state || state.finished || Math.floor(state.balance) >= 1 || state.current_loan) {
+    return;
+  }
+  state.balance = round2(state.balance + LOAN_CREDITS);
+  state.debt = round2(state.debt + LOAN_CREDITS);
+  state.current_loan = LOAN_CREDITS;
   saveSession();
   render();
 }
@@ -689,12 +751,14 @@ function continueSimulation() {
 function meanStakeShare(phase) {
   const rows = state.rounds.filter((round) => round.phase === phase);
   const mean = rows.reduce((total, round) => total + round.stake_share, 0) / rows.length;
-  return `${(mean * 100).toFixed(1)}% of balance magnitude`;
+  return `${(mean * 100).toFixed(1)}% of available balance`;
 }
 
 function renderCompletion() {
   document.querySelector("#baseline-summary").textContent = meanStakeShare("baseline");
   document.querySelector("#follow-up-summary").textContent = meanStakeShare("post");
+  document.querySelector("#ending-account").textContent =
+    `${formatCredits(state.balance)} available · ${formatCredits(state.debt)} debt · ${formatCredits(round2(state.balance - state.debt))} net`;
   document.querySelector("#debrief-condition").textContent = state.condition === "winning" ? "winning" : "losing";
   document.querySelector("#completion-copy").textContent =
     `Your random study ID is ${state.participant_id}. The study server receives your betting choices and study condition, but not a name or contact detail.`;
@@ -817,6 +881,7 @@ beginButton.addEventListener("click", () => {
 });
 document.querySelector("#place-bet-button").addEventListener("click", placeBet);
 document.querySelector("#continue-button").addEventListener("click", continueSimulation);
+document.querySelector("#loan-button").addEventListener("click", takeLoan);
 document.querySelector("#download-button").addEventListener("click", downloadCsv);
 document.querySelector("#retry-upload-button").addEventListener("click", submitSession);
 document.querySelector("#new-participant-button").addEventListener("click", startNewParticipant);

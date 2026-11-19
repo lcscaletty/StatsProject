@@ -34,6 +34,8 @@ ALLOWED_ORIGINS = [
 ]
 
 PHASES = ["baseline"] * 4 + ["streak"] * 4 + ["post"] * 4
+MAX_STAKE = 500
+LOAN_AMOUNT = 1000
 TEAM_NAMES = {
     "Cedar City Foxes",
     "Northbank Owls",
@@ -71,6 +73,9 @@ CSV_COLUMNS = [
     "profit",
     "balance_before",
     "balance_after",
+    "debt_before",
+    "debt_after",
+    "loan_amount",
     "forced",
 ]
 
@@ -95,6 +100,9 @@ ROUND_COLUMNS = (
     "profit",
     "balance_before",
     "balance_after",
+    "debt_before",
+    "debt_after",
+    "loan_amount",
     "forced",
 )
 ROUND_RECORD_COLUMNS = ROUND_COLUMNS[1:-1]
@@ -128,6 +136,9 @@ SCHEMA = (
         profit DOUBLE PRECISION NOT NULL,
         balance_before DOUBLE PRECISION NOT NULL,
         balance_after DOUBLE PRECISION NOT NULL,
+        debt_before DOUBLE PRECISION NOT NULL DEFAULT 0,
+        debt_after DOUBLE PRECISION NOT NULL DEFAULT 0,
+        loan_amount INTEGER NOT NULL DEFAULT 0,
         forced INTEGER NOT NULL CHECK (forced IN (0, 1)),
         PRIMARY KEY (participant_id, round_number)
     )
@@ -137,6 +148,9 @@ ROUND_MIGRATIONS = {
     "team_a_score": "INTEGER NOT NULL DEFAULT 0",
     "team_b_score": "INTEGER NOT NULL DEFAULT 0",
     "week_games": "TEXT NOT NULL DEFAULT '[]'",
+    "debt_before": "DOUBLE PRECISION NOT NULL DEFAULT 0",
+    "debt_after": "DOUBLE PRECISION NOT NULL DEFAULT 0",
+    "loan_amount": "INTEGER NOT NULL DEFAULT 0",
 }
 
 app = FastAPI(title="Sports Betting Decisions Study API", docs_url=None, redoc_url=None)
@@ -178,13 +192,16 @@ class RoundRecord(BaseModel):
     probability_a: float = Field(gt=0, lt=1)
     selection: Literal["A", "B"]
     selected_odds: float = Field(gt=1, le=10)
-    stake: int = Field(ge=1)
-    stake_share: float = Field(gt=0)
+    stake: int = Field(ge=1, le=MAX_STAKE)
+    stake_share: float = Field(gt=0, le=1)
     winner: Literal["A", "B"]
     bet_result: Literal["win", "loss"]
     profit: float
-    balance_before: float
-    balance_after: float
+    balance_before: float = Field(ge=0)
+    balance_after: float = Field(ge=0)
+    debt_before: float = Field(default=0, ge=0)
+    debt_after: float = Field(default=0, ge=0)
+    loan_amount: Literal[0, 1000] = 0
     forced: bool
 
 
@@ -246,6 +263,7 @@ def database() -> Generator[sqlite3.Connection | psycopg.Connection[dict[str, An
 
 def validate_submission(submission: Submission) -> None:
     previous_balance = 1000.0
+    previous_debt = 0.0
     for index, record in enumerate(submission.rounds):
         expected_phase = PHASES[index]
         if record.round_number != index + 1 or record.phase != expected_phase:
@@ -329,10 +347,27 @@ def validate_submission(submission: Submission) -> None:
                 )
             ):
                 raise ValueError("The featured league game must match the recorded bet.")
-        if not math.isclose(record.balance_before, previous_balance, abs_tol=0.02):
+        if not math.isclose(record.debt_before, previous_debt, abs_tol=0.02):
+            raise ValueError("Each round's opening debt must match the previous round.")
+        if record.loan_amount and math.floor(previous_balance + 1e-8) >= 1:
+            raise ValueError("A loan may only be taken when fewer than one credit remains.")
+        expected_opening_balance = previous_balance + record.loan_amount
+        if not math.isclose(
+            record.balance_before,
+            expected_opening_balance,
+            abs_tol=0.02,
+        ):
+            if record.loan_amount:
+                raise ValueError("A loan must add 1,000 credits to the available balance.")
             raise ValueError("Each round's opening balance must match the previous round.")
+        expected_debt_after = previous_debt + record.loan_amount
+        if not math.isclose(record.debt_after, expected_debt_after, abs_tol=0.02):
+            raise ValueError("Outstanding debt must increase by the amount of each loan.")
 
-        expected_share = record.stake / max(abs(record.balance_before), 1)
+        max_stake = min(MAX_STAKE, math.floor(record.balance_before + 1e-8))
+        if record.stake > max_stake:
+            raise ValueError("Stake exceeds the 500-credit limit or available balance.")
+        expected_share = record.stake / max(record.balance_before, 1)
         if not math.isclose(record.stake_share, expected_share, abs_tol=0.001):
             raise ValueError("Recorded stake share does not match the balance and stake.")
 
@@ -347,6 +382,7 @@ def validate_submission(submission: Submission) -> None:
         if not math.isclose(record.balance_after, expected_balance, abs_tol=0.02):
             raise ValueError("Recorded closing balance does not match the result.")
         previous_balance = record.balance_after
+        previous_debt = record.debt_after
 
 
 def save_submission(submission: Submission) -> bool:
@@ -441,7 +477,7 @@ def export_csv(authorization: str | None = Header(default=None)) -> StreamingRes
                    r.team_a, r.team_b, r.team_a_score, r.team_b_score, r.odds_a, r.odds_b,
                    r.week_games, r.probability_a, r.selection, r.selected_odds, r.stake,
                    r.stake_share, r.winner, r.bet_result, r.profit, r.balance_before,
-                   r.balance_after, r.forced
+                   r.balance_after, r.debt_before, r.debt_after, r.loan_amount, r.forced
             FROM rounds AS r
             JOIN submissions AS s USING (participant_id)
             ORDER BY s.submitted_at, s.participant_id, r.round_number

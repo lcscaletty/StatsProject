@@ -38,7 +38,7 @@
 
         <div class="notice">
           <strong>Before you begin</strong>
-          <p>This is a fictional sports league simulation using study credits; no real money is involved. Each week features one game to bet on while a full 12-team schedule is played. There is no wager cap: wagers may exceed your balance, and losses can leave it negative. Some details about how results are determined will be explained after the simulation.</p>
+          <p>This is a fictional sports league simulation using study credits; no real money is involved. Each week features one game to bet on while a full 12-team schedule is played. Bets are capped at 500 credits and cannot exceed available credits. When available credits fall below one, you may take another 1,000-credit loan; loans remain as debt during the simulation and winnings do not repay them automatically, so your net position can become negative. Some details about how results are determined will be explained after the simulation.</p>
           <p>The site does not ask for your name or contact details. Do not enter any personal information.</p>
           <p>Responses are sent to the study server when you finish. For questions about the research, contact the researcher who shared this link.</p>
         </div>
@@ -61,8 +61,18 @@
                 <h1 id="round-heading">Week 1 of 12</h1>
               </div>
               <div class="balance-card">
-                <span class="detail-label">STUDY CREDITS</span>
-                <strong id="balance-value">1,000</strong>
+                <div class="account-metric">
+                  <span class="detail-label">AVAILABLE CREDITS</span>
+                  <strong id="balance-value">1,000</strong>
+                </div>
+                <div class="account-metric">
+                  <span class="detail-label">LOAN DEBT</span>
+                  <strong id="debt-value">0</strong>
+                </div>
+                <div class="account-metric">
+                  <span class="detail-label">NET POSITION</span>
+                  <strong id="net-value">1,000</strong>
+                </div>
               </div>
             </div>
 
@@ -83,6 +93,14 @@
                 <span class="helper-text" id="stake-help"></span>
               </label>
               <button class="button button-primary" id="place-bet-button" type="button" disabled>Place simulated bet <span aria-hidden="true">→</span></button>
+            </div>
+
+            <div class="loan-prompt" id="loan-prompt" hidden>
+              <div>
+                <p class="eyebrow">NO AVAILABLE CREDITS</p>
+                <p>Take a 1,000-credit loan to place this week's bet. The loan is added to your available credits and tracked as debt.</p>
+              </div>
+              <button class="button button-secondary" id="loan-button" type="button">Take 1,000-credit loan</button>
             </div>
 
             <div class="round-feedback" id="round-feedback" aria-live="polite" hidden>
@@ -111,6 +129,10 @@
               <div>
                 <span class="detail-label">FOLLOW-UP STAKE / BALANCE MAGNITUDE</span>
                 <strong id="follow-up-summary">—</strong>
+              </div>
+              <div>
+                <span class="detail-label">ENDING AVAILABLE / DEBT / NET</span>
+                <strong id="ending-account">—</strong>
               </div>
             </div>
 
