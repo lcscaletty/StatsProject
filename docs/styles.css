@@ -537,6 +537,56 @@ input:focus-visible {
   grid-template-columns: repeat(2, 1fr);
 }
 
+.participant-id-box {
+  margin-top: 28px;
+  padding: 20px;
+  border: 1px solid #c9d9d7;
+  border-radius: 4px;
+  background: #f2f7f5;
+}
+
+.participant-id-box h2 {
+  margin: 0;
+  font-size: 19px;
+}
+
+.participant-id-box > p:not(.copy-status) {
+  margin: 8px 0 16px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.participant-id-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.participant-id-row code {
+  overflow-wrap: anywhere;
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.copy-status {
+  margin: 10px 0 0;
+  font-size: 12px;
+}
+
+.copy-status:empty {
+  display: none;
+}
+
+.copy-status.success {
+  color: var(--green);
+}
+
+.copy-status.error {
+  color: var(--red);
+}
+
 .debrief {
   border-left-color: var(--green);
   background: #f2f7f5;
