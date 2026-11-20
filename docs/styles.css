@@ -564,9 +564,16 @@ input:focus-visible {
   gap: 12px;
 }
 
-.participant-id-row code {
-  overflow-wrap: anywhere;
+.participant-id-row input {
+  flex: 1 1 250px;
+  min-width: 0;
+  min-height: 48px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
   color: var(--ink);
+  background: #fff;
+  font-family: Consolas, "Courier New", monospace;
   font-size: 14px;
 }
 

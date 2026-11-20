@@ -816,7 +816,7 @@ function renderCompletion() {
   document.querySelector("#ending-account").textContent =
     `${formatCredits(state.balance)} available · ${formatCredits(state.debt)} debt · ${formatCredits(round2(state.balance - state.debt))} net`;
   document.querySelector("#debrief-condition").textContent = state.condition === "winning" ? "winning" : "losing";
-  document.querySelector("#participant-id").textContent = state.participant_id;
+  document.querySelector("#participant-id").value = state.participant_id;
   document.querySelector("#completion-copy").textContent =
     "The study server receives your betting choices and study condition, but not a name or contact detail.";
 
@@ -838,13 +838,31 @@ function renderCompletion() {
 
 async function copyParticipantId() {
   const copyStatus = document.querySelector("#copy-status");
+  const participantIdInput = document.querySelector("#participant-id");
+  let copied = false;
+
   try {
     await navigator.clipboard.writeText(state.participant_id);
+    copied = true;
+  } catch {
+    participantIdInput.focus();
+    participantIdInput.select();
+    participantIdInput.setSelectionRange(0, participantIdInput.value.length);
+    try {
+      copied = document.execCommand("copy");
+    } catch {
+      copied = false;
+    }
+  }
+
+  if (copied) {
     copyStatus.textContent = "Copied. Paste this ID into the survey to link your responses.";
     copyStatus.className = "copy-status success";
-  } catch {
-    copyStatus.textContent =
-      "Could not copy automatically. Select the ID above and copy it into the survey.";
+  } else {
+    participantIdInput.focus();
+    participantIdInput.select();
+    participantIdInput.setSelectionRange(0, participantIdInput.value.length);
+    copyStatus.textContent = "The ID is selected. Press Ctrl+C (or Command+C on Mac), then paste it into the survey.";
     copyStatus.className = "copy-status error";
   }
 }
